@@ -8,3 +8,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Note: app/debug.keystore IS committed (intentional - shared with sisterfuture project)
+
+# Release signing keystore is kept locally by 主人 (do NOT commit release.keystore)
+*.jks
+/app/release.keystore

@@ -4,6 +4,23 @@ android {
     namespace 'com.stupidbeauty.hxaccounting'
     compileSdk 34
 
+    // Signing configuration: use shared debug.keystore (from sisterfuture project)
+    // for debug builds. Release builds will use 主人's private release.keystore.
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        // Release config: 主人 creates keystore.properties locally with:
+        //   storeFile=release.keystore
+        //   storePassword=***
+        //   keyAlias=***
+        //   keyPassword=***
+        // and loads it here. Not committed.
+    }
+
     defaultConfig {
         applicationId "com.stupidbeauty.hxaccounting"
         minSdk 24
@@ -13,7 +30,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
+            // Release signing requires 主人's private release.keystore
+            // (not committed; configured via local keystore.properties)
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

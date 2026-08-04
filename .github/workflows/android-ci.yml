@@ -69,8 +69,8 @@ jobs:
     - name: Generate APK filename with timestamp
       id: apk-name
       run: |
-        VERSION_NAME=$(grep -oP "versionName\s+\"\K[^\"]+" app/build.gradle || echo "0.1.0")
-        VERSION_CODE=$(grep -oP "versionCode\s+\K\d+" app/build.gradle || echo "1")
+        VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle || echo "0.1.0")
+        VERSION_CODE=$(grep -oP 'versionCode\s+\K\d+' app/build.gradle || echo "1")
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         APK_NAME="hxaccounting-debug-v${VERSION_NAME}-${VERSION_CODE}-${TIMESTAMP}.apk"
         mv apk/app-debug.apk "apk/${APK_NAME}"
@@ -78,19 +78,46 @@ jobs:
         echo "version_name=${VERSION_NAME}" >> $GITHUB_OUTPUT
         echo "version_code=${VERSION_CODE}" >> $GITHUB_OUTPUT
         echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+        ls -la apk/
+
+    - name: Delete old release (if exists)
+      uses: actions/github-script@v7
+      with:
+        script: |
+          try {
+            const releases = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const targetTag = `ci/auto-build-${{ github.run_id }}`;
+            for (const release of releases.data) {
+              if (release.tag_name === targetTag) {
+                console.log(`Deleting existing release: ${release.tag_name}`);
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: release.id
+                });
+              }
+            }
+            console.log(`Target tag: ${targetTag}`);
+          } catch (error) {
+            console.log(`Error checking releases: ${error.message}`);
+          }
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ci/auto-build-${{ github.run_number }}
+        tag_name: ci/auto-build-${{ github.run_id }}
         name: 🤖 CI Build
         prerelease: true
         body: |
           ## 🤖 自动构建版本
 
-          **构建编号:** ${{ github.run_number }}
+          **构建编号:** ${{ github.run_id }}
           **提交:** ${{ github.sha }}
           **时间:** ${{ github.event.head_commit.timestamp }}
 

@@ -2,11 +2,9 @@ name: Android CI
 
 on:
   push:
-    branches:
-    - master
+    branches: [ master ]
   pull_request:
-    branches:
-    - master
+    branches: [ master ]
 
 jobs:
   build:
@@ -51,3 +49,62 @@ jobs:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 7
+
+  release-debug-apk:
+    name: Release Debug APK
+    needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download debug APK
+      uses: actions/download-artifact@v4
+      with:
+        name: app-debug
+        path: apk/
+
+    - name: Generate APK filename with timestamp
+      id: apk-name
+      run: |
+        VERSION_NAME=$(grep -oP "versionName\s+\"\K[^\"]+" app/build.gradle || echo "0.1.0")
+        VERSION_CODE=$(grep -oP "versionCode\s+\K\d+" app/build.gradle || echo "1")
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        APK_NAME="hxaccounting-debug-v${VERSION_NAME}-${VERSION_CODE}-${TIMESTAMP}.apk"
+        mv apk/app-debug.apk "apk/${APK_NAME}"
+        echo "apk_name=${APK_NAME}" >> $GITHUB_OUTPUT
+        echo "version_name=${VERSION_NAME}" >> $GITHUB_OUTPUT
+        echo "version_code=${VERSION_CODE}" >> $GITHUB_OUTPUT
+        echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ci/auto-build-${{ github.run_number }}
+        name: 🤖 CI Build
+        prerelease: true
+        body: |
+          ## 🤖 自动构建版本
+
+          **构建编号:** ${{ github.run_number }}
+          **提交:** ${{ github.sha }}
+          **时间:** ${{ github.event.head_commit.timestamp }}
+
+          ---
+          ### 📦 下载
+          - **Debug 版**: `hxaccounting-debug-v*.apk` (自动签名，仅供测试)
+            - 文件名格式：`hxaccounting-debug-v{versionName}-{versionCode}-{buildTime}.apk`
+
+          ⚠️ Debug 版本使用共享 debug.keystore 签名，仅供测试。Release 版本需要主人本地配置正式密钥。
+
+          ### 🔗 下载方式
+          点击上方的文件即可下载，**无需登录**。
+
+
+          ## What's Changed
+          ${{ github.event.head_commit.message }}
+        files: apk/${{ steps.apk-name.outputs.apk_name }}

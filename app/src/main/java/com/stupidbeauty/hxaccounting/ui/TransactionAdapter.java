@@ -26,19 +26,25 @@ import java.util.Locale;
  */
 public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.ViewHolder> {
 
-    private final List<Transaction> transactions;
+    private List<Transaction> transactions;
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("MM-dd", Locale.getDefault());
 
     private OnTransactionClickListener listener;
+    private Context context;
 
     public interface OnTransactionClickListener {
         void onTransactionClick(Transaction transaction);
         void onTransactionLongClick(Transaction transaction, View view);
     }
 
-    public TransactionAdapter(List<Transaction> transactions) {
+    public TransactionAdapter(Context context) {
+        this.context = context;
+    }
+
+    public void setTransactions(List<Transaction> transactions) {
         this.transactions = transactions;
+        notifyDataSetChanged();
     }
 
     public void setOnTransactionClickListener(OnTransactionClickListener listener) {
@@ -55,14 +61,13 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+        if (transactions == null || position >= transactions.size()) return;
         Transaction t = transactions.get(position);
 
-        // 分类名（暂时用 enum 显示）
         String categoryName = categoryNameFromType(t.getType());
         holder.tvCategoryName.setText(categoryName);
         holder.tvCategoryIcon.setText(iconForType(t.getType()));
 
-        // 颜色（暂时用 expense/income 区分）
         try {
             int color = Color.parseColor("#FF6B6B");
             if (t.getTransactionType() == TransactionType.INCOME) {
@@ -73,7 +78,6 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
             // ignore
         }
 
-        // 备注
         String description = t.getDescription();
         if (description == null || description.isEmpty()) {
             holder.tvDescription.setText(categoryName);
@@ -81,7 +85,6 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
             holder.tvDescription.setText(description);
         }
 
-        // 时间
         long time = t.getTransactionTime();
         if (isToday(time)) {
             holder.tvTimeAgo.setText(timeFormat.format(new Date(time)));
@@ -91,17 +94,15 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
             holder.tvTimeAgo.setText(dateFormat.format(new Date(time)));
         }
 
-        // 金额
         TransactionType type = t.getTransactionType();
         String sign = type == TransactionType.EXPENSE ? "-" : "+";
         holder.tvAmount.setText(sign + String.format(Locale.getDefault(), "%.2f", t.getAmount()));
         if (type == TransactionType.EXPENSE) {
             holder.tvAmount.setTextColor(Color.parseColor("#FFE53935"));
         } else {
-            holder.tvAmount.setTextTextColorSafe(Color.parseColor("#FF43A047"));
+            holder.tvAmount.setTextColor(Color.parseColor("#FF43A047"));
         }
 
-        // 点击事件
         holder.itemView.setOnClickListener(v -> {
             if (listener != null) listener.onTransactionClick(t);
         });
@@ -160,7 +161,7 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
             tvDescription = itemView.findViewById(R.id.tvDescription);
             tvTimeAgo = itemView.findViewById(R.id.tvTimeAgo);
             tvAmount = itemView.findViewById(R.id.tvAmount);
-            categoryIconContainer = (CardView) itemView.findViewById(R.id.categoryIconContainer);
+            categoryIconContainer = (CardView) itemView;
         }
     }
 }

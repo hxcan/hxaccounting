@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
+import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -39,7 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private View accountBar;
     private TextView btnSwitchAccount;
     private TextView btnManageAccounts;
-    private TextView emptyView;
+    private LinearLayout emptyView;
     private RecyclerView rvTransactions;
     private TransactionAdapter transactionAdapter;
     private TransactionRepository transactionRepository;

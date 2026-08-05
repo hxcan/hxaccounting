@@ -5,6 +5,30 @@
     <string name="title_main">太极记账</string>
     <string name="fab_add">记一笔</string>
 
+    <!-- 账本管理 -->
+    <string name="title_accounts">账本</string>
+    <string name="btn_manage_accounts">管理账本</string>
+    <string name="empty_accounts">还没有账本\n点 + 创建第一个账本</string>
+    <string name="action_create_account">新建账本</string>
+    <string name="action_edit_account">编辑账本</string>
+    <string name="action_delete_account">删除账本</string>
+    <string name="action_set_current">设为当前</string>
+    <string name="hint_account_name">账本名称（如：教育基金）</string>
+    <string name="label_account_name">账本名称</string>
+    <string name="label_account_type">账本类型</string>
+    <string name="label_account_color">账本颜色</string>
+    <string name="dialog_create_account_title">新建账本</string>
+    <string name="dialog_edit_account_title">编辑账本</string>
+    <string name="dialog_delete_account_title">删除账本？</string>
+    <string name="dialog_delete_account_message">账本下的所有流水也会被删除，无法恢复。\n\n确定要删除 \"%1$s\" 吗？</string>
+    <string name="error_account_name_empty">请输入账本名称</string>
+    <string name="error_account_name_exists">账本名称已存在</string>
+    <string name="msg_account_created">账本创建成功</string>
+    <string name="msg_account_updated">账本已更新</string>
+    <string name="msg_account_deleted">账本已删除</string>
+    <string name="msg_account_set_current">已设为当前账本</string>
+    <string name="badge_current">当前</string>
+
     <!-- 快速记账页面 -->
     <string name="title_quick_add">记一笔</string>
     <string name="hint_amount">0.00</string>

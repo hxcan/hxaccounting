@@ -16,12 +16,17 @@
             </intent-filter>
         </activity>
 
-        <!-- 快速记账 Activity -->
         <activity
             android:name=".ui.QuickAddActivity"
             android:exported="false"
             android:label="@string/title_quick_add"
             android:windowSoftInputMode="adjustResize|stateHidden" />
+
+        <activity
+            android:name=".ui.AccountsActivity"
+            android:exported="false"
+            android:label="@string/title_accounts"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 
 </manifest>

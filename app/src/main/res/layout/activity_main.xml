@@ -103,27 +103,45 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- 主内容区（暂时为欢迎页，后续替换为流水列表 B5） -->
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <!-- 主内容区：流水列表（B5） -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:orientation="vertical"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <TextView
-            android:id="@+id/welcomeText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:padding="32dp"
-            android:text="👇\n点击右下角 + 记一笔\n5秒搞定！"
-            android:textColor="@color/taiji_text_secondary"
-            android:textSize="18sp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+        <!-- 流水 RecyclerView -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvTransactions"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="4dp"
+            android:clipToPadding="false" />
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+        <!-- 空状态 -->
+        <LinearLayout
+            android:id="@+id/emptyView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:padding="32dp"
+                android:text="📋
+
+还没有流水
+点右下角 + 记第一笔"
+                android:textColor="@color/taiji_text_secondary"
+                android:textSize="18sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
 
     <!-- 快速记账 FAB 按钮（核心入口） -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton

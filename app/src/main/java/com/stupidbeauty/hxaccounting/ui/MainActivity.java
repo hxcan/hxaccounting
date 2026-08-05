@@ -4,18 +4,24 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
+import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import androidx.lifecycle.LiveData;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.stupidbeauty.hxaccounting.R;
 import com.stupidbeauty.hxaccounting.data.entity.Account;
+import com.stupidbeauty.hxaccounting.data.entity.Transaction;
 import com.stupidbeauty.hxaccounting.data.repository.AccountRepository;
+import com.stupidbeauty.hxaccounting.data.repository.TransactionRepository;
 
 import java.util.List;
 
@@ -23,9 +29,8 @@ import java.util.List;
  * 主页面
  * 1. 顶部 AppBar（标题"太极记账"）
  * 2. 当前账本切换栏（点击切换 / 长按管理）
- * 3. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
- *
- * 后续 B5 任务会在此处接入流水列表（RecyclerView）
+ * 3. 当前账本的流水列表（B5）
+ * 4. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -35,8 +40,14 @@ public class MainActivity extends AppCompatActivity {
     private View accountBar;
     private TextView btnSwitchAccount;
     private TextView btnManageAccounts;
+    private LinearLayout emptyView;
+    private RecyclerView rvTransactions;
+    private TransactionAdapter transactionAdapter;
+    private TransactionRepository transactionRepository;
     private AccountRepository accountRepository;
     private LiveData<Account> currentAccountLive;
+    private LiveData<List<Transaction>> currentTransactionsLive;
+    private long currentAccountIdShown = -1L;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,10 +55,12 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         accountRepository = new AccountRepository(this);
+        transactionRepository = new TransactionRepository(this);
 
         bindViews();
         setupFab();
         setupAccountBar();
+        setupTransactionList();
         observeCurrentAccount();
     }
 
@@ -58,6 +71,8 @@ public class MainActivity extends AppCompatActivity {
         accountBar = findViewById(R.id.accountBar);
         btnSwitchAccount = findViewById(R.id.btnSwitchAccount);
         btnManageAccounts = findViewById(R.id.btnManageAccounts);
+        rvTransactions = findViewById(R.id.rvTransactions);
+        emptyView = findViewById(R.id.emptyView);
     }
 
     private void setupFab() {
@@ -69,38 +84,90 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupAccountBar() {
-        // 点击"切换"按钮 → 弹出账本列表
         btnSwitchAccount.setOnClickListener(v -> showAccountSwitcher(v));
-        // 点击"管理"按钮 → 进入账本管理页
         btnManageAccounts.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, AccountsActivity.class);
             startActivity(intent);
         });
-        // 点击账本栏 → 也弹出切换菜单
         accountBar.setOnClickListener(v -> showAccountSwitcher(accountBar));
     }
 
+    private void setupTransactionList() {
+        rvTransactions.setLayoutManager(new LinearLayoutManager(this));
+        transactionAdapter = new TransactionAdapter(this);
+        rvTransactions.setAdapter(transactionAdapter);
+    }
+
     private void observeCurrentAccount() {
-        // 观察当前账本（LiveData 自动响应）
         currentAccountLive = accountRepository.getCurrentAccount();
         if (currentAccountLive != null) {
-            currentAccountLive.observe(this, this::updateCurrentAccountDisplay);
+            currentAccountLive.observe(this, this::onCurrentAccountChanged);
         }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // 从 AccountsActivity 切回来时重新查询
         long id = accountRepository.getCurrentAccountIdSync();
         if (id != -1L) {
-            accountRepository.getAccountById(id).observe(this, this::updateCurrentAccountDisplay);
+            accountRepository.getAccountById(id).observe(this, this::onCurrentAccountChanged);
         }
     }
 
-    /**
-     * 弹出账本切换菜单（PopupMenu）
-     */
+    private void onCurrentAccountChanged(Account account) {
+        updateCurrentAccountDisplay(account);
+        loadTransactionsFor(account);
+    }
+
+    private void updateCurrentAccountDisplay(Account account) {
+        if (account == null) {
+            tvCurrentAccountName.setText("未选择账本");
+            tvCurrentAccountIcon.setText("📒");
+            try {
+                currentAccountIconContainer.setCardBackgroundColor(Color.parseColor("#778CA3"));
+            } catch (Exception e) {
+                // ignore
+            }
+            return;
+        }
+        tvCurrentAccountName.setText(account.getName());
+        tvCurrentAccountIcon.setText(iconToEmoji(account.getName(), account.getType()));
+        try {
+            currentAccountIconContainer.setCardBackgroundColor(Color.parseColor(account.getColor()));
+        } catch (Exception e) {
+            currentAccountIconContainer.setCardBackgroundColor(Color.parseColor("#FF6B6B"));
+        }
+    }
+
+    private void loadTransactionsFor(Account account) {
+        if (account == null) {
+            currentAccountIdShown = -1L;
+            transactionAdapter.setTransactions(null);
+            rvTransactions.setVisibility(View.GONE);
+            emptyView.setVisibility(View.VISIBLE);
+            return;
+        }
+        if (account.getId() == currentAccountIdShown) {
+            return;
+        }
+        currentAccountIdShown = account.getId();
+        if (currentTransactionsLive != null) {
+            currentTransactionsLive.removeObservers(this);
+        }
+        currentTransactionsLive = transactionRepository.getByAccountId(account.getId(), 100, 0);
+        currentTransactionsLive.observe(this, transactions -> {
+            if (transactions == null || transactions.isEmpty()) {
+                transactionAdapter.setTransactions(null);
+                rvTransactions.setVisibility(View.GONE);
+                emptyView.setVisibility(View.VISIBLE);
+            } else {
+                transactionAdapter.setTransactions(transactions);
+                rvTransactions.setVisibility(View.VISIBLE);
+                emptyView.setVisibility(View.GONE);
+            }
+        });
+    }
+
     private void showAccountSwitcher(View anchor) {
         LiveData<List<Account>> accountsLive = accountRepository.getActiveAccounts();
         accountsLive.observe(this, accounts -> {
@@ -127,36 +194,11 @@ public class MainActivity extends AppCompatActivity {
                 }
                 Account selected = accounts.get(item.getItemId());
                 accountRepository.setCurrentAccountId(selected.getId());
-                updateCurrentAccountDisplay(selected);
                 Toast.makeText(this, "已切换到：" + selected.getName(), Toast.LENGTH_SHORT).show();
                 return true;
             });
             popup.show();
         });
-    }
-
-    /**
-     * 更新当前账本显示
-     */
-    private void updateCurrentAccountDisplay(Account account) {
-        if (account == null) {
-            tvCurrentAccountName.setText("未选择账本");
-            tvCurrentAccountIcon.setText("📒");
-            try {
-                currentAccountIconContainer.setCardBackgroundColor(Color.parseColor("#778CA3"));
-            } catch (Exception e) {
-                // ignore
-            }
-            return;
-        }
-        tvCurrentAccountName.setText(account.getName());
-        // 智能 emoji
-        tvCurrentAccountIcon.setText(iconToEmoji(account.getName(), account.getType()));
-        try {
-            currentAccountIconContainer.setCardBackgroundColor(Color.parseColor(account.getColor()));
-        } catch (Exception e) {
-            currentAccountIconContainer.setCardBackgroundColor(Color.parseColor("#FF6B6B"));
-        }
     }
 
     private String iconToEmoji(String name, String type) {

@@ -7,4 +7,31 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- 太极记账 - 记账相关颜色（黑白灰 + 红绿点缀） -->
+    <color name="taiji_bg">#FFFAFAFA</color>
+    <color name="taiji_card">#FFFFFFFF</color>
+    <color name="taiji_text_primary">#FF222222</color>
+    <color name="taiji_text_secondary">#FF888888</color>
+    <color name="taiji_divider">#FFEEEEEE</color>
+
+    <!-- 支出 / 收入 -->
+    <color name="taiji_expense">#FFE53935</color>
+    <color name="taiji_income">#FF43A047</color>
+
+    <!-- 类型切换按钮 -->
+    <color name="taiji_tab_selected">#FF222222</color>
+    <color name="taiji_tab_unselected">#FFCCCCCC</color>
+
+    <!-- 分类图标背景池（与 Category 实体的 color 字段保持一致） -->
+    <color name="cat_food">#FF6B6B</color>
+    <color name="cat_transport">#FF4ECDC4</color>
+    <color name="cat_shopping">#FFFFA07A</color>
+    <color name="cat_home">#FF95E1D3</color>
+    <color name="cat_entertainment">#FFF38181</color>
+    <color name="cat_medical">#FFAA96DA</color>
+    <color name="cat_education">#FF6C5CE7</color>
+    <color name="cat_parenting">#FFFDA7DF</color>
+    <color name="cat_income">#FF26DE81</color>
+    <color name="cat_other">#FF778CA3</color>
 </resources>

@@ -58,10 +58,10 @@ public interface AccountDao {
     void updateBudget(long id, double budget, long updatedAt);
 
     /**
-     * 根据 ID 归档/取消归档
+     * 根据 ID 归档账本（true=归档，false=取消归档）
      */
     @Query("UPDATE accounts SET is_archived = :archived, updated_at = :updatedAt WHERE id = :id")
-    void updateArchived(long id, boolean archived, long updatedAt);
+    void archive(long id, boolean archived, long updatedAt);
 
     /**
      * 根据 ID 更新排序顺序
@@ -92,16 +92,10 @@ public interface AccountDao {
     // ============ QUERY - 单个 ============
 
     /**
-     * 根据 ID 查询账本
+     * 根据 ID 查询账本（响应式，匹配 Repository 调用）
      */
     @Query("SELECT * FROM accounts WHERE id = :id LIMIT 1")
-    Account findById(long id);
-
-    /**
-     * 根据 ID 查询账本（响应式）
-     */
-    @Query("SELECT * FROM accounts WHERE id = :id LIMIT 1")
-    LiveData<Account> findByIdLive(long id);
+    LiveData<Account> getAccountById(long id);
 
     /**
      * 根据名称精确查询（用于查重）
@@ -118,16 +112,16 @@ public interface AccountDao {
     // ============ QUERY - 列表 ============
 
     /**
-     * 查询所有未归档账本（响应式）
+     * 查询所有未归档账本（响应式，匹配 Repository 调用）
      */
     @Query("SELECT * FROM accounts WHERE is_archived = 0 ORDER BY sort_order ASC, created_at ASC")
-    LiveData<List<Account>> findAllActive();
+    LiveData<List<Account>> getActiveAccounts();
 
     /**
-     * 查询所有账本（含已归档）
+     * 查询所有账本（含已归档，匹配 Repository 调用）
      */
     @Query("SELECT * FROM accounts ORDER BY sort_order ASC, created_at ASC")
-    LiveData<List<Account>> findAll();
+    LiveData<List<Account>> getAllAccounts();
 
     /**
      * 根据类型查询账本

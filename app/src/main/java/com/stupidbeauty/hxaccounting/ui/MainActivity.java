@@ -93,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupTransactionList() {
         rvTransactions.setLayoutManager(new LinearLayoutManager(this));
-        transactionAdapter = new TransactionAdapter();
+        transactionAdapter = new TransactionAdapter(this);
         rvTransactions.setAdapter(transactionAdapter);
     }
 
@@ -147,7 +147,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (account.getId() == currentAccountIdShown) {
-            return; // already loaded
+            return;
         }
         currentAccountIdShown = account.getId();
         if (currentTransactionsLive != null) {

@@ -2,6 +2,7 @@ package com.stupidbeauty.hxaccounting.ui;
 
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.widget.EditText;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -13,7 +14,6 @@ import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.checkbox.MaterialCheckBox;
-import com.google.android.material.textfield.TextInputEditText;
 import com.stupidbeauty.hxaccounting.R;
 import com.stupidbeauty.hxaccounting.data.entity.Account;
 import com.stupidbeauty.hxaccounting.data.entity.Category;
@@ -32,8 +32,8 @@ import java.util.List;
  */
 public class QuickAddActivity extends AppCompatActivity {
 
-    private TextInputEditText etAmount;
-    private TextInputEditText etDescription;
+    private EditText etAmount;
+    private EditText etDescription;
     private MaterialButtonToggleGroup toggleType;
     private MaterialButtonToggleGroup togglePayment;
     private MaterialCheckBox cbAnomaly;

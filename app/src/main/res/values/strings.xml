@@ -20,7 +20,7 @@
     <string name="dialog_create_account_title">新建账本</string>
     <string name="dialog_edit_account_title">编辑账本</string>
     <string name="dialog_delete_account_title">删除账本？</string>
-    <string name="dialog_delete_account_message">账本下的所有流水也会被删除，无法恢复。\n\n确定要删除 \"%1$s\" 吗？</string>
+    <string name="dialog_delete_account_message">账本下的所有流水也会被删除，无法恢复。\n\n确定要删除 "%1$s" 吗？</string>
     <string name="error_account_name_empty">请输入账本名称</string>
     <string name="error_account_name_exists">账本名称已存在</string>
     <string name="msg_account_created">账本创建成功</string>
@@ -49,6 +49,18 @@
     <string name="error_category_required">请选择分类</string>
     <string name="error_no_account">请先创建一个账本</string>
     <string name="msg_save_success">记账成功</string>
+
+    <!-- 流水列表（B5） -->
+    <string name="section_today">今天</string>
+    <string name="section_yesterday">昨天</string>
+    <string name="section_this_week">本周更早</string>
+    <string name="section_earlier">更早</string>
+    <string name="empty_transactions">还没有流水\n点右下角 + 记第一笔</string>
+    <string name="msg_no_current_account_for_list">请先选择账本</string>
+    <string name="action_edit_transaction">编辑</string>
+    <string name="action_delete_transaction">删除</string>
+    <string name="dialog_delete_transaction_title">删除这笔流水？</string>
+    <string name="msg_transaction_deleted">流水已删除</string>
 
     <!-- 支付方式 -->
     <string name="pay_cash">现金</string>

@@ -1,3 +1,64 @@
 <resources>
-    <string name="app_name">HxAccounting</string>
+    <string name="app_name">太极记账</string>
+
+    <!-- 主页面 -->
+    <string name="title_main">太极记账</string>
+    <string name="fab_add">记一笔</string>
+
+    <!-- 快速记账页面 -->
+    <string name="title_quick_add">记一笔</string>
+    <string name="hint_amount">0.00</string>
+    <string name="label_amount">金额</string>
+    <string name="type_expense">支出</string>
+    <string name="type_income">收入</string>
+    <string name="label_category">分类</string>
+    <string name="label_subcategory">子分类（可选）</string>
+    <string name="label_description">备注（可选）</string>
+    <string name="label_payment_method">支付方式</string>
+    <string name="label_recipient">收款人 / 商家</string>
+    <string name="label_anomaly">异常支出（不计入日均）</string>
+    <string name="btn_save">保存</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_select_category">请选择分类</string>
+    <string name="error_amount_required">请输入金额</string>
+    <string name="error_amount_invalid">金额必须大于 0</string>
+    <string name="error_category_required">请选择分类</string>
+    <string name="error_no_account">请先创建一个账本</string>
+    <string name="msg_save_success">记账成功</string>
+
+    <!-- 支付方式 -->
+    <string name="pay_cash">现金</string>
+    <string name="pay_wechat">微信</string>
+    <string name="pay_alipay">支付宝</string>
+    <string name="pay_bank_card">银行卡</string>
+    <string name="pay_credit_card">信用卡</string>
+    <string name="pay_other">其他</string>
+
+    <!-- 分类名称（与预置数据对应） -->
+    <string name="cat_food">餐饮</string>
+    <string name="cat_food_breakfast">早餐</string>
+    <string name="cat_food_lunch">午餐</string>
+    <string name="cat_food_dinner">晚餐</string>
+    <string name="cat_food_takeout">外卖</string>
+    <string name="cat_food_tea">奶茶</string>
+
+    <string name="cat_transport">交通</string>
+    <string name="cat_transport_bus">公交地铁</string>
+    <string name="cat_transport_taxi">打车</string>
+    <string name="cat_transport_fuel">加油</string>
+
+    <string name="cat_shopping">购物</string>
+    <string name="cat_shopping_daily">日用</string>
+    <string name="cat_shopping_clothing">服饰</string>
+
+    <string name="cat_home">居家</string>
+    <string name="cat_home_rent">房租</string>
+    <string name="cat_home_utility">水电煤</string>
+
+    <string name="cat_entertainment">娱乐</string>
+    <string name="cat_medical">医疗</string>
+    <string name="cat_education">教育</string>
+    <string name="cat_parenting">育儿</string>
+    <string name="cat_income">收入</string>
+    <string name="cat_other">其他</string>
 </resources>

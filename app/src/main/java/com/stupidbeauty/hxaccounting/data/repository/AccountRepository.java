@@ -1,12 +1,9 @@
 package com.stupidbeauty.hxaccounting.data.repository;
-
 import android.content.Context;
 import androidx.lifecycle.LiveData;
-
 import com.stupidbeauty.hxaccounting.data.dao.AccountDao;
 import com.stupidbeauty.hxaccounting.data.database.TaijiDatabase;
 import com.stupidbeauty.hxaccounting.data.entity.Account;
-
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -16,7 +13,6 @@ import java.util.concurrent.Executors;
  * 封装 AccountDao 的业务逻辑
  */
 public class AccountRepository {
-
     private final AccountDao accountDao;
     private final ExecutorService ioExecutor;
 
@@ -27,7 +23,6 @@ public class AccountRepository {
     }
 
     // --- 查询（LiveData，自动响应UI）---
-
     public LiveData<List<Account>> getActiveAccounts() {
         return accountDao.getActiveAccounts();
     }
@@ -41,7 +36,6 @@ public class AccountRepository {
     }
 
     // --- 写入（异步执行）---
-
     public void insert(Account account, InsertCallback callback) {
         ioExecutor.execute(() -> {
             long id = accountDao.insert(account);
@@ -56,7 +50,7 @@ public class AccountRepository {
     }
 
     public void archive(long id) {
-        ioExecutor.execute(() -> accountDao.archive(id, System.currentTimeMillis()));
+        ioExecutor.execute(() -> accountDao.archive(id, true, System.currentTimeMillis()));
     }
 
     public void delete(Account account) {

@@ -8,7 +8,7 @@
     android:background="@color/taiji_bg"
     tools:context=".ui.MainActivity">
 
-    <!-- 顶部 AppBar -->
+    <!-- 顶部 AppBar：账本切换器 -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBar"
         android:layout_width="match_parent"
@@ -22,6 +22,84 @@
             android:background="@color/taiji_text_primary"
             app:title="@string/title_main"
             app:titleTextColor="@color/white" />
+
+        <!-- 当前账本切换栏 -->
+        <LinearLayout
+            android:id="@+id/accountBar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@color/taiji_text_primary"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:backgroundTint="#2A2A2A">
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/currentAccountIconContainer"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                app:cardBackgroundColor="#FF6B6B"
+                app:cardCornerRadius="18dp"
+                app:cardElevation="0dp">
+
+                <TextView
+                    android:id="@+id/tvCurrentAccountIcon"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="📒"
+                    android:textSize="18sp" />
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="当前账本"
+                    android:textColor="#AAAAAA"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvCurrentAccountName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="未选择账本"
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btnSwitchAccount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:padding="8dp"
+                android:text="切换 ▼"
+                android:textColor="@color/white"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/btnManageAccounts"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:padding="8dp"
+                android:text="管理"
+                android:textColor="@color/white"
+                android:textSize="14sp" />
+
+        </LinearLayout>
 
     </com.google.android.material.appbar.AppBarLayout>
 

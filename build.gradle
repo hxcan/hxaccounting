@@ -13,6 +13,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // JitPack: for sisterfuture CrashDetector and other hxcan libraries
+        maven { url 'https://jitpack.io' }
     }
 }
 

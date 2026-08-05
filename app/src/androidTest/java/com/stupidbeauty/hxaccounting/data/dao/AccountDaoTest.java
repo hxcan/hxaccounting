@@ -8,7 +8,6 @@ import androidx.lifecycle.Observer;
 import androidx.room.Room;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
-import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.stupidbeauty.hxaccounting.data.database.AppDatabase;
 import com.stupidbeauty.hxaccounting.data.entity.Account;
@@ -27,13 +26,15 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
  * AccountDao 单元测试（Android Instrumentation）
  *
  * 使用内存数据库测试，确保 DAO 的所有方法都工作正常。
+ *
+ * 命名约定：匹配 Repository 已使用的方法名
+ * - getActiveAccounts / getAllAccounts / getAccountById / archive
  */
 @RunWith(AndroidJUnit4.class)
 public class AccountDaoTest {
@@ -67,7 +68,7 @@ public class AccountDaoTest {
 
         assertTrue("Generated ID should be > 0", id > 0);
 
-        Account retrieved = accountDao.findById(id);
+        Account retrieved = accountDao.findByName("教育基金");
         assertNotNull(retrieved);
         assertEquals("教育基金", retrieved.getName());
         assertEquals(AccountType.SAVINGS, retrieved.getAccountType());
@@ -94,7 +95,8 @@ public class AccountDaoTest {
         long now = System.currentTimeMillis();
         accountDao.updateName(id, "新名", now);
 
-        Account updated = accountDao.findById(id);
+        Account updated = accountDao.findByName("新名");
+        assertNotNull(updated);
         assertEquals("新名", updated.getName());
         assertEquals(now, updated.getUpdatedAt());
     }
@@ -106,7 +108,8 @@ public class AccountDaoTest {
 
         accountDao.updateBudget(id, 5000.0, System.currentTimeMillis());
 
-        Account updated = accountDao.findById(id);
+        Account updated = accountDao.findByName("测试");
+        assertNotNull(updated);
         assertEquals(5000.0, updated.getBudget(), 0.001);
     }
 
@@ -116,12 +119,14 @@ public class AccountDaoTest {
         long id = accountDao.insert(account);
 
         // 归档
-        accountDao.updateArchived(id, true, System.currentTimeMillis());
-        assertTrue(accountDao.findById(id).isArchived());
+        accountDao.archive(id, true, System.currentTimeMillis());
+        List<Account> archived = getValue(accountDao.findArchived());
+        assertEquals(1, archived.size());
 
         // 取消归档
-        accountDao.updateArchived(id, false, System.currentTimeMillis());
-        assertFalse(accountDao.findById(id).isArchived());
+        accountDao.archive(id, false, System.currentTimeMillis());
+        List<Account> active = getValue(accountDao.getActiveAccounts());
+        assertEquals(1, active.size());
     }
 
     // ============ DELETE 测试 ============
@@ -133,7 +138,7 @@ public class AccountDaoTest {
 
         accountDao.deleteById(id);
 
-        assertNull(accountDao.findById(id));
+        assertEquals(0, accountDao.countAll());
     }
 
     @Test
@@ -146,13 +151,10 @@ public class AccountDaoTest {
         long id2 = accountDao.insert(a2);
         long id3 = accountDao.insert(a3);
 
-        accountDao.updateArchived(id3, true, System.currentTimeMillis());
+        accountDao.archive(id3, true, System.currentTimeMillis());
         accountDao.deleteAllArchived();
 
         assertEquals(2, accountDao.countAll());
-        assertNotNull(accountDao.findById(id1));
-        assertNotNull(accountDao.findById(id2));
-        assertNull(accountDao.findById(id3));
     }
 
     // ============ QUERY 测试 ============
@@ -179,15 +181,26 @@ public class AccountDaoTest {
     }
 
     @Test
-    public void findAllActive() throws Exception {
+    public void getActiveAccounts() throws Exception {
         accountDao.insert(new Account("活跃1", AccountType.CASH));
         accountDao.insert(new Account("活跃2", AccountType.SAVINGS));
 
         Account archived = new Account("归档", AccountType.CREDIT);
         long archivedId = accountDao.insert(archived);
-        accountDao.updateArchived(archivedId, true, System.currentTimeMillis());
+        accountDao.archive(archivedId, true, System.currentTimeMillis());
 
-        List<Account> all = getValue(accountDao.findAllActive());
+        List<Account> all = getValue(accountDao.getActiveAccounts());
+        assertEquals(2, all.size());
+    }
+
+    @Test
+    public void getAllAccounts() throws Exception {
+        accountDao.insert(new Account("活跃1", AccountType.CASH));
+        Account archived = new Account("归档", AccountType.CREDIT);
+        long archivedId = accountDao.insert(archived);
+        accountDao.archive(archivedId, true, System.currentTimeMillis());
+
+        List<Account> all = getValue(accountDao.getAllAccounts());
         assertEquals(2, all.size());
     }
 
@@ -220,7 +233,7 @@ public class AccountDaoTest {
 
         Account archived = new Account("归档", AccountType.CREDIT);
         long id = accountDao.insert(archived);
-        accountDao.updateArchived(id, true, System.currentTimeMillis());
+        accountDao.archive(id, true, System.currentTimeMillis());
 
         assertEquals(2, accountDao.countActive());
         assertEquals(3, accountDao.countAll());

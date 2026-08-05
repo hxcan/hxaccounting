@@ -1,6 +1,8 @@
 package com.stupidbeauty.hxaccounting.ui;
 
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -32,6 +34,9 @@ public class AccountsActivity extends AppCompatActivity {
     private FloatingActionButton fabAddAccount;
     private AccountAdapter accountAdapter;
     private AccountRepository accountRepository;
+
+    // 主线程 Handler，用于从后台线程切回 UI 线程执行 Toast / dismiss
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private final String[] presetColors = {
         "#FF6B6B", "#FF4ECDC4", "#FFFFA07A", "#FF95E1D3",
@@ -188,26 +193,34 @@ public class AccountsActivity extends AppCompatActivity {
                     Toast.makeText(this, R.string.error_account_name_empty, Toast.LENGTH_SHORT).show();
                     return;
                 }
-                if (accountRepository.existsByName(name) && (existing == null || !existing.getName().equals(name))) {
-                    Toast.makeText(this, R.string.error_account_name_exists, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                Account account = existing != null ? existing : new Account();
-                account.setName(name);
-                account.setAccountType(selectedType[0]);
-                account.setColor(selectedColor[0]);
-                if (existing == null) {
-                    accountRepository.createAndSetCurrent(account, id -> runOnUiThread(() -> {
-                        Toast.makeText(this, R.string.msg_account_created, Toast.LENGTH_SHORT).show();
-                        dialog.dismiss();
-                    }));
-                } else {
-                    accountRepository.update(account);
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, R.string.msg_account_updated, Toast.LENGTH_SHORT).show();
-                        dialog.dismiss();
+                // #859273719279 主线程崩溃修复：改为异步查重
+                // 原来的 accountRepository.existsByName(name) 在主线程访问 Room 数据库
+                // 触发 IllegalStateException，现在改用 existsByNameAsync + 回调
+                accountRepository.existsByNameAsync(name, exists -> {
+                    // 回调在后台线程，切回主线程处理 UI
+                    mainHandler.post(() -> {
+                        if (exists && (existing == null || !existing.getName().equals(name))) {
+                            Toast.makeText(this, R.string.error_account_name_exists, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        Account account = existing != null ? existing : new Account();
+                        account.setName(name);
+                        account.setAccountType(selectedType[0]);
+                        account.setColor(selectedColor[0]);
+                        if (existing == null) {
+                            accountRepository.createAndSetCurrent(account, id -> runOnUiThread(() -> {
+                                Toast.makeText(this, R.string.msg_account_created, Toast.LENGTH_SHORT).show();
+                                dialog.dismiss();
+                            }));
+                        } else {
+                            accountRepository.update(account);
+                            runOnUiThread(() -> {
+                                Toast.makeText(this, R.string.msg_account_updated, Toast.LENGTH_SHORT).show();
+                                dialog.dismiss();
+                            });
+                        }
                     });
-                }
+                });
             });
         });
         dialog.show();

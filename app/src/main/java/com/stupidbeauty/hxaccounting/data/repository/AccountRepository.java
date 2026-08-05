@@ -246,6 +246,22 @@ public class AccountRepository {
     }
 
     /**
+     * 异步检测账本名称是否存在
+     * 在后台线程查询数据库，callback 回调到调用方线程（通常是主线程）
+     *
+     * @param name     账本名称
+     * @param callback 结果回调，true 表示存在
+     */
+    public void existsByNameAsync(String name, @Nullable ExistsCallback callback) {
+        ioExecutor.execute(() -> {
+            boolean exists = accountDao.existsByName(name);
+            if (callback != null) {
+                callback.onResult(exists);
+            }
+        });
+    }
+
+    /**
      * 清理资源（Activity 销毁时调用）
      */
     public void shutdown() {
@@ -257,5 +273,12 @@ public class AccountRepository {
      */
     public interface InsertCallback {
         void onInserted(long id);
+    }
+
+    /**
+     * 存在性查询回调接口
+     */
+    public interface ExistsCallback {
+        void onResult(boolean exists);
     }
 }

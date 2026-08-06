@@ -25,6 +25,33 @@ class ExpenseRecord {
 }
 
 /**
+ * 预算结果：今日剩余预算
+ *
+ * <p>包含：
+ * <ul>
+ *   <li>suggestedBudget：今日建议预算（日均 × 倍率）</li>
+ *   <li>todaySpent：今日已花（流水表实时 SUM）</li>
+ *   <li>remaining：今日剩余（suggested - spent）</li>
+ *   <li>usagePercent：使用百分比（spent / suggested × 100）</li>
+ * </ul>
+ */
+public class BudgetResult {
+    public final double suggestedBudget;
+    public final double todaySpent;
+    public final double remaining;
+    public final double usagePercent;
+
+    public BudgetResult(double suggestedBudget, double todaySpent) {
+        this.suggestedBudget = suggestedBudget;
+        this.todaySpent = todaySpent;
+        this.remaining = suggestedBudget - todaySpent;
+        this.usagePercent = suggestedBudget > 0
+                ? (todaySpent / suggestedBudget) * 100.0
+                : 0.0;
+    }
+}
+
+/**
  * 预算计算器
  *
  * <p>负责根据历史支出计算：
@@ -88,11 +115,9 @@ public class BudgetCalculator {
 
         double total = 0.0;
         for (ExpenseRecord record : expenses) {
-            // 只算支出（金额为正）
             if (record.amount <= 0) {
                 continue;
             }
-            // 如果需要排除异常，且本条是异常，则跳过
             if (excludeAnomaly && record.isAnomaly) {
                 continue;
             }
@@ -100,5 +125,80 @@ public class BudgetCalculator {
         }
 
         return total / windowSize;
+    }
+
+    /**
+     * 计算建议日预算
+     *
+     * <p>公式：日均支出 × 倍率
+     *
+     * <p>典型用法：
+     * <ul>
+     *   <li>倍率 1.0 → 等于日均（最常用）</li>
+     *   <li>倍率 0.8 → 节省模式（打八折）</li>
+     *   <li>倍率 1.2 → 宽松模式（多花两成）</li>
+     * </ul>
+     *
+     * @param dailyAvg 历史日均支出（元/天）
+     * @param rate     倍率（必须 &gt; 0）
+     * @return 建议日预算（元）
+     */
+    public static double calculateDailyBudget(double dailyAvg, double rate) {
+        if (rate <= 0) {
+            throw new IllegalArgumentException("rate must be > 0, got: " + rate);
+        }
+        return dailyAvg * rate;
+    }
+
+    /**
+     * 计算今日剩余预算
+     *
+     * <p>公式：今日建议预算 - 今日已花
+     *
+     * <p>这是主人最关心的数字！
+     * 主人在花下一笔钱时会"心里有数"。
+     *
+     * <p>UI 显示建议：
+     * <pre>
+     * 剩余 ¥20 \/ ¥50 (40%)
+     * ████░░░░░░
+     * </pre>
+     *
+     * @param suggestedBudget 今日建议预算（元）
+     * @param todaySpent      今日已花（元，从流水表实时 SUM）
+     * @return BudgetResult 包含建议、已花、剩余、使用百分比
+     */
+    public static BudgetResult calculateTodayRemaining(
+            double suggestedBudget, double todaySpent) {
+        return new BudgetResult(suggestedBudget, todaySpent);
+    }
+
+    /**
+     * 一站式：从历史支出直接算出今日剩余预算
+     *
+     * <p>组合调用：
+     * <ol>
+     *   <li>calculateDailyAvg → 日均</li>
+     *   <li>calculateDailyBudget(日均, 倍率) → 建议预算</li>
+     *   <li>calculateTodayRemaining(建议, 今日已花) → 剩余</li>
+     * </ol>
+     *
+     * @param expenses       窗口内的历史支出记录
+     * @param windowSize     窗口大小（天）
+     * @param rate           倍率（&gt; 0）
+     * @param todaySpent     今日已花（元）
+     * @param excludeAnomaly 是否排除异常支出
+     * @return BudgetResult
+     */
+    public static BudgetResult calculateFromHistory(
+            List<ExpenseRecord> expenses,
+            int windowSize,
+            double rate,
+            double todaySpent,
+            boolean excludeAnomaly) {
+
+        double dailyAvg = calculateDailyAvg(expenses, windowSize, excludeAnomaly);
+        double suggested = calculateDailyBudget(dailyAvg, rate);
+        return calculateTodayRemaining(suggested, todaySpent);
     }
 }

@@ -3,6 +3,7 @@ package com.stupidbeauty.hxaccounting.ui;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
@@ -13,11 +14,15 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import androidx.lifecycle.LiveData;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.stupidbeauty.hxaccounting.R;
+import com.stupidbeauty.hxaccounting.budget.BudgetCardBinder;
+import com.stupidbeauty.hxaccounting.budget.BudgetViewModel;
 import com.stupidbeauty.hxaccounting.data.entity.Account;
 import com.stupidbeauty.hxaccounting.data.entity.Transaction;
 import com.stupidbeauty.hxaccounting.data.repository.AccountRepository;
@@ -34,9 +39,10 @@ import java.util.Locale;
  * 主页面
  * 1. 顶部 AppBar（标题"太极记账"）
  * 2. 当前账本切换栏（点击切换 / 长按管理）
- * 3. 合计卡片：今日/本周/本月支出 + 本月收入
- * 4. 当前账本的流水列表（B5）
- * 5. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
+ * 3. 预算状态卡片（C2 新增：今日剩余预算）
+ * 4. 合计卡片：今日/本周/本月支出 + 本月收入
+ * 5. 当前账本的流水列表（B5）
+ * 6. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -60,6 +66,11 @@ public class MainActivity extends AppCompatActivity {
     private LiveData<List<Transaction>> currentTransactionsLive;
     private long currentAccountIdShown = -1L;
 
+    // C2 预算相关
+    private BudgetViewModel budgetViewModel;
+    private MaterialCardView budgetStatusCard;
+    private BudgetCardBinder budgetCardBinder;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -67,11 +78,22 @@ public class MainActivity extends AppCompatActivity {
 
         accountRepository = new AccountRepository(this);
         transactionRepository = new TransactionRepository(this);
+
+        // C2: 初始化预算 ViewModel 和卡片
+        budgetViewModel = new ViewModelProvider(this).get(BudgetViewModel.class);
+
         bindViews();
+        // C2: 嵌入预算卡片到合计卡片上方
+        injectBudgetCard();
         setupFab();
         setupAccountBar();
         setupTransactionList();
         observeCurrentAccount();
+
+        // C2: 绑定预算卡片
+        if (budgetCardBinder != null) {
+            budgetCardBinder.bind();
+        }
 
         FileLogger.i(TAG, "onCreate 完成，初始化完毕");
     }
@@ -89,6 +111,28 @@ public class MainActivity extends AppCompatActivity {
         tvMonthIncome = findViewById(R.id.tvMonthIncome);
         rvTransactions = findViewById(R.id.rvTransactions);
         emptyView = findViewById(R.id.emptyView);
+    }
+
+    /**
+     * C2: 把预算状态卡片动态注入到合计卡片上方
+     */
+    private void injectBudgetCard() {
+        // 通过 inflate 创建预算卡片
+        View budgetCardView = LayoutInflater.from(this)
+                .inflate(R.layout.card_budget_status, null, false);
+        budgetStatusCard = (MaterialCardView) budgetCardView;
+
+        // 找到合计卡片的父容器，把预算卡片插入到它前面
+        View summaryCard = findViewById(R.id.summaryCard);
+        if (summaryCard != null && summaryCard.getParent() instanceof LinearLayout) {
+            LinearLayout parent = (LinearLayout) summaryCard.getParent();
+            int index = parent.indexOfChild(summaryCard);
+            parent.addView(budgetStatusCard, index);
+        }
+
+        // 创建绑定器
+        budgetCardBinder = new BudgetCardBinder(this, this, budgetStatusCard, budgetViewModel);
+        FileLogger.i(TAG, "预算卡片已注入");
     }
 
     private void setupFab() {
@@ -149,6 +193,11 @@ public class MainActivity extends AppCompatActivity {
         updateCurrentAccountDisplay(account);
         loadTransactionsFor(account);
         loadSummaryFor(account);
+        // C2: 通知预算 ViewModel 当前账本已切换
+        if (account != null && account.getId() != currentAccountIdShown) {
+            budgetViewModel.setCurrentAccountId(account.getId());
+            FileLogger.i(TAG, "C2: 预算 ViewModel 已切换账本 ID = " + account.getId());
+        }
     }
 
     private void updateCurrentAccountDisplay(Account account) {

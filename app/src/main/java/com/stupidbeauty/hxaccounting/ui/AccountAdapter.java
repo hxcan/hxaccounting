@@ -15,11 +15,12 @@ import com.stupidbeauty.hxaccounting.R;
 import com.stupidbeauty.hxaccounting.data.entity.Account;
 import com.stupidbeauty.hxaccounting.data.entity.AccountType;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class AccountAdapter extends RecyclerView.Adapter<AccountAdapter.ViewHolder> {
 
-    private final List<Account> accounts;
+    private final List<Account> accounts = new ArrayList<>();
     private long currentAccountId = -1L;
     private OnAccountClickListener listener;
 
@@ -29,7 +30,24 @@ public class AccountAdapter extends RecyclerView.Adapter<AccountAdapter.ViewHold
     }
 
     public AccountAdapter(List<Account> accounts) {
-        this.accounts = accounts;
+        // 拷贝一份到内部可变列表（避免外部 list 变更影响）
+        if (accounts != null) {
+            this.accounts.addAll(accounts);
+        }
+    }
+
+    /**
+     * 用新数据替换内部列表，并通知 RecyclerView 刷新。
+     * 修复 #859864944989：LiveData 回调时只调用 notifyDataSetChanged()
+     * 但 adapter 内部的 accounts 引用还是第一次构造时传入的旧 List，
+     * 导致新插入的账本不显示。
+     */
+    public void setAccounts(List<Account> newAccounts) {
+        this.accounts.clear();
+        if (newAccounts != null) {
+            this.accounts.addAll(newAccounts);
+        }
+        notifyDataSetChanged();
     }
 
     public void setCurrentAccountId(long currentAccountId) {

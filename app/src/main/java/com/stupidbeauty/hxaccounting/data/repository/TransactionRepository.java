@@ -74,14 +74,28 @@ public class TransactionRepository {
         return transactionDao.getAverageExpenseAfter(accountId, startTime);
     }
 
-    // --- 今日/本月汇总 ---
+    // --- 今日/本周/本月汇总 ---
 
     public LiveData<Double> getTodayTotal(long accountId, long startOfDay, long endOfDay) {
         return transactionDao.getTodayTotal(accountId, startOfDay, endOfDay);
     }
 
+    /**
+     * 本周支出合计（feat/transaction-summary）
+     */
+    public LiveData<Double> getWeekTotal(long accountId, long startOfWeek) {
+        return transactionDao.getWeekTotal(accountId, startOfWeek);
+    }
+
     public LiveData<Double> getMonthTotal(long accountId, long startOfMonth, long endOfMonth) {
         return transactionDao.getMonthTotal(accountId, startOfMonth, endOfMonth);
+    }
+
+    /**
+     * 本月收入合计（feat/transaction-summary）
+     */
+    public LiveData<Double> getMonthIncome(long accountId, long startOfMonth, long endOfMonth) {
+        return transactionDao.getMonthIncome(accountId, startOfMonth, endOfMonth);
     }
 
     public interface InsertCallback {

@@ -24,14 +24,19 @@ import com.stupidbeauty.hxaccounting.data.repository.AccountRepository;
 import com.stupidbeauty.hxaccounting.data.repository.TransactionRepository;
 import com.stupidbeauty.hxaccounting.utils.FileLogger;
 
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 主页面
  * 1. 顶部 AppBar（标题"太极记账"）
  * 2. 当前账本切换栏（点击切换 / 长按管理）
- * 3. 当前账本的流水列表（B5）
- * 4. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
+ * 3. 合计卡片：今日/本周/本月支出 + 本月收入
+ * 4. 当前账本的流水列表（B5）
+ * 5. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -42,6 +47,10 @@ public class MainActivity extends AppCompatActivity {
     private View accountBar;
     private TextView btnSwitchAccount;
     private TextView btnManageAccounts;
+    private TextView tvTodayExpense;
+    private TextView tvWeekExpense;
+    private TextView tvMonthExpense;
+    private TextView tvMonthIncome;
     private LinearLayout emptyView;
     private RecyclerView rvTransactions;
     private TransactionAdapter transactionAdapter;
@@ -74,6 +83,10 @@ public class MainActivity extends AppCompatActivity {
         accountBar = findViewById(R.id.accountBar);
         btnSwitchAccount = findViewById(R.id.btnSwitchAccount);
         btnManageAccounts = findViewById(R.id.btnManageAccounts);
+        tvTodayExpense = findViewById(R.id.tvTodayExpense);
+        tvWeekExpense = findViewById(R.id.tvWeekExpense);
+        tvMonthExpense = findViewById(R.id.tvMonthExpense);
+        tvMonthIncome = findViewById(R.id.tvMonthIncome);
         rvTransactions = findViewById(R.id.rvTransactions);
         emptyView = findViewById(R.id.emptyView);
     }
@@ -135,6 +148,7 @@ public class MainActivity extends AppCompatActivity {
         }
         updateCurrentAccountDisplay(account);
         loadTransactionsFor(account);
+        loadSummaryFor(account);
     }
 
     private void updateCurrentAccountDisplay(Account account) {
@@ -195,6 +209,96 @@ public class MainActivity extends AppCompatActivity {
                 FileLogger.d(TAG, "【流水】账本「" + account.getName() + "」加载了 " + transactions.size() + " 笔流水");
             }
         });
+    }
+
+    /**
+     * 加载合计数据（今日/本周/本月支出 + 本月收入）
+     * 账本变化时自动重新订阅。
+     */
+    private void loadSummaryFor(Account account) {
+        FileLogger.d(TAG, "【合计】loadSummaryFor 开始");
+        if (account == null) {
+            // 无账本时清空显示
+            tvTodayExpense.setText("¥0.00");
+            tvWeekExpense.setText("¥0.00");
+            tvMonthExpense.setText("¥0.00");
+            tvMonthIncome.setText("¥0.00");
+            return;
+        }
+
+        long accountId = account.getId();
+        TimeRange today = todayRange();
+        TimeRange week = weekRange();
+        TimeRange month = monthRange();
+
+        // 今日支出
+        transactionRepository.getTodayTotal(accountId, today.start, today.end)
+                .observe(this, value -> updateAmount(tvTodayExpense, value, "今日"));
+        // 本周支出
+        transactionRepository.getWeekTotal(accountId, week.start)
+                .observe(this, value -> updateAmount(tvWeekExpense, value, "本周"));
+        // 本月支出
+        transactionRepository.getMonthTotal(accountId, month.start, month.end)
+                .observe(this, value -> updateAmount(tvMonthExpense, value, "本月"));
+        // 本月收入
+        transactionRepository.getMonthIncome(accountId, month.start, month.end)
+                .observe(this, value -> updateAmount(tvMonthIncome, value, "本月收入"));
+    }
+
+    private void updateAmount(TextView tv, Double value, String label) {
+        double amount = value == null ? 0.0 : value;
+        tv.setText(String.format(Locale.getDefault(), "¥%.2f", amount));
+        FileLogger.d(TAG, "【合计】" + label + " = ¥" + amount);
+    }
+
+    /** 今天 00:00:00 ~ 明天 00:00:00 */
+    private TimeRange todayRange() {
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        long start = cal.getTimeInMillis();
+        cal.add(Calendar.DAY_OF_YEAR, 1);
+        long end = cal.getTimeInMillis();
+        return new TimeRange(start, end);
+    }
+
+    /** 本周一 00:00:00 ~ 下周一 00:00:00 */
+    private TimeRange weekRange() {
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
+        long start = cal.getTimeInMillis();
+        cal.add(Calendar.WEEK_OF_YEAR, 1);
+        long end = cal.getTimeInMillis();
+        return new TimeRange(start, end);
+    }
+
+    /** 本月 1 号 00:00:00 ~ 下月 1 号 00:00:00 */
+    private TimeRange monthRange() {
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.DAY_OF_MONTH, 1);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        long start = cal.getTimeInMillis();
+        cal.add(Calendar.MONTH, 1);
+        long end = cal.getTimeInMillis();
+        return new TimeRange(start, end);
+    }
+
+    private static class TimeRange {
+        final long start;
+        final long end;
+        TimeRange(long start, long end) {
+            this.start = start;
+            this.end = end;
+        }
     }
 
     private void showAccountSwitcher(View anchor) {

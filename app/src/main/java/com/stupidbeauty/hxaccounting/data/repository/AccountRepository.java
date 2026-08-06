@@ -2,6 +2,7 @@ package com.stupidbeauty.hxaccounting.data.repository;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.lifecycle.LiveData;
@@ -11,6 +12,7 @@ import com.stupidbeauty.hxaccounting.data.dao.AccountDao;
 import com.stupidbeauty.hxaccounting.data.database.TaijiDatabase;
 import com.stupidbeauty.hxaccounting.data.entity.Account;
 import com.stupidbeauty.hxaccounting.data.entity.AccountType;
+import com.stupidbeauty.hxaccounting.utils.FileLogger;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -40,6 +42,9 @@ public class AccountRepository {
     // 当前账本状态（跨 Activity 共享）
     private final MutableLiveData<Long> currentAccountIdLive = new MutableLiveData<>();
 
+    // 缓存 getCurrentAccount() 返回的 LiveData，避免重复创建
+    private LiveData<Account> cachedCurrentAccountLive = null;
+
     public AccountRepository(Context context) {
         this.appContext = context.getApplicationContext();
         TaijiDatabase db = TaijiDatabase.getInstance(this.appContext);
@@ -50,6 +55,7 @@ public class AccountRepository {
         SharedPreferences prefs = this.appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         long savedId = prefs.getLong(KEY_CURRENT_ACCOUNT_ID, -1L);
         currentAccountIdLive.postValue(savedId);
+        FileLogger.i(TAG, "AccountRepository 初始化完成，从 SharedPreferences 恢复当前账本 ID=" + savedId);
     }
 
     // ========== 查询（LiveData，自动响应 UI） ==========
@@ -72,6 +78,7 @@ public class AccountRepository {
      * 根据 ID 获取账本
      */
     public LiveData<Account> getAccountById(long id) {
+        FileLogger.d(TAG, "【Repo】getAccountById 被调用，id=" + id);
         return accountDao.getAccountById(id);
     }
 
@@ -142,11 +149,27 @@ public class AccountRepository {
      * @param accountId 账本 ID（-1L 表示清除当前账本）
      */
     public void setCurrentAccountId(long accountId) {
+        FileLogger.i(TAG, "【Repo】setCurrentAccountId 被调用，accountId=" + accountId);
+        Long oldValue = currentAccountIdLive.getValue();
+        FileLogger.d(TAG, "【Repo】postValue 前，currentAccountIdLive.getValue()=" + oldValue);
+
+        // 关键：先 postValue 到 LiveData
         currentAccountIdLive.postValue(accountId);
+
+        Long newValue = currentAccountIdLive.getValue();
+        FileLogger.d(TAG, "【Repo】postValue 后，currentAccountIdLive.getValue()=" + newValue);
+        FileLogger.d(TAG, "【Repo】currentAccountIdLive 变化：" + oldValue + " -> " + newValue);
+
+        // 同时使缓存的 getCurrentAccount LiveData 失效（如果有 observer）
+        if (cachedCurrentAccountLive != null) {
+            FileLogger.d(TAG, "【Repo】使缓存的 getCurrentAccount LiveData 失效（创建新对象）");
+            cachedCurrentAccountLive = null;
+        }
 
         // 持久化到 SharedPreferences
         SharedPreferences prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         prefs.edit().putLong(KEY_CURRENT_ACCOUNT_ID, accountId).apply();
+        FileLogger.i(TAG, "【Repo】setCurrentAccountId 完成");
     }
 
     /**
@@ -154,10 +177,35 @@ public class AccountRepository {
      */
     public LiveData<Account> getCurrentAccount() {
         long currentId = getCurrentAccountIdSync();
-        if (currentId == -1L) {
-            return new MutableLiveData<>(null);
+        FileLogger.i(TAG, "【Repo】getCurrentAccount 被调用，currentId=" + currentId);
+
+        // 如果有缓存的 LiveData 且 ID 一致，复用它
+        if (cachedCurrentAccountLive != null) {
+            FileLogger.d(TAG, "【Repo】复用缓存的 LiveData");
+            return cachedCurrentAccountLive;
         }
-        return accountDao.getAccountById(currentId);
+
+        if (currentId == -1L) {
+            FileLogger.d(TAG, "【Repo】currentId=-1，返回 null MutableLiveData");
+            MutableLiveData<Account> emptyLive = new MutableLiveData<>();
+            cachedCurrentAccountLive = emptyLive;
+            return emptyLive;
+        }
+
+        FileLogger.d(TAG, "【Repo】从 DAO 查询账本 ID=" + currentId);
+        LiveData<Account> result = accountDao.getAccountById(currentId);
+        cachedCurrentAccountLive = result;
+        FileLogger.d(TAG, "【Repo】DAO LiveData 已返回并缓存");
+        return result;
+    }
+
+    /**
+     * 强制刷新当前账本 LiveData（切换账本后调用）
+     */
+    public void invalidateCurrentAccount() {
+        FileLogger.i(TAG, "【Repo】invalidateCurrentAccount 被调用");
+        cachedCurrentAccountLive = null;
+        FileLogger.d(TAG, "【Repo】缓存已清除，下次 getCurrentAccount() 将返回新实例");
     }
 
     // ========== 写入（异步执行） ==========
@@ -234,11 +282,10 @@ public class AccountRepository {
             long id = accountDao.insert(account);
             // 创建后自动设为当前账本
             appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putLong(KEY_CURRENT_ACCOUNT_ID, id)
-                .apply();
+                    .edit()
+                    .putLong(KEY_CURRENT_ACCOUNT_ID, id)
+                    .apply();
             currentAccountIdLive.postValue(id);
-
             if (callback != null) {
                 callback.onInserted(id);
             }
@@ -249,7 +296,7 @@ public class AccountRepository {
      * 异步检测账本名称是否存在
      * 在后台线程查询数据库，callback 回调到调用方线程（通常是主线程）
      *
-     * @param name     账本名称
+     * @param name 账本名称
      * @param callback 结果回调，true 表示存在
      */
     public void existsByNameAsync(String name, @Nullable ExistsCallback callback) {

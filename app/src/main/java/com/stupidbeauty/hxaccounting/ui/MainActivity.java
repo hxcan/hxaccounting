@@ -90,6 +90,18 @@ public class MainActivity extends AppCompatActivity {
         setupTransactionList();
         observeCurrentAccount();
 
+        // C2 fix: 同步初始化预算账本 ID，避免首次启动时预算卡片显示"选择账本后显示"
+        // 必须在 observeCurrentAccount() 之后、budgetCardBinder.bind() 之前调用，
+        // 这样 BudgetViewModel.rebuildBudgetLive() 在首次渲染时就能拿到账本 ID。
+        long initialAccountId = accountRepository.getCurrentAccountIdSync();
+        FileLogger.i(TAG, "C2 fix: onCreate 同步读取当前账本 ID = " + initialAccountId);
+        if (initialAccountId != -1L) {
+            budgetViewModel.setCurrentAccountId(initialAccountId);
+            FileLogger.i(TAG, "C2 fix: 预算卡片已同步初始化账本 ID = " + initialAccountId);
+        } else {
+            FileLogger.w(TAG, "C2 fix: 当前账本 ID 为 -1L（首次启动或未创建账本），预算卡片将保持占位文案");
+        }
+
         // C2: 绑定预算卡片
         if (budgetCardBinder != null) {
             budgetCardBinder.bind();

@@ -7,9 +7,9 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.card.MaterialCardView;
 import com.stupidbeauty.hxaccounting.R;
 import com.stupidbeauty.hxaccounting.data.entity.Category;
 
@@ -136,13 +136,15 @@ public class CategoryAdapter extends RecyclerView.Adapter<CategoryAdapter.ViewHo
     static class ViewHolder extends RecyclerView.ViewHolder {
         final TextView tvIcon;
         final TextView tvName;
-        final CardView iconContainer;
+        // 修复 #859905324452：item_category_chip.xml 根布局是 LinearLayout，
+        // iconContainer 实际上是内部的 MaterialCardView，所以要用 findViewById。
+        final MaterialCardView iconContainer;
 
         ViewHolder(View itemView) {
             super(itemView);
             tvIcon = itemView.findViewById(R.id.tvCategoryIcon);
             tvName = itemView.findViewById(R.id.tvCategoryName);
-            iconContainer = (CardView) itemView;
+            iconContainer = itemView.findViewById(R.id.iconContainer);
         }
     }
 }

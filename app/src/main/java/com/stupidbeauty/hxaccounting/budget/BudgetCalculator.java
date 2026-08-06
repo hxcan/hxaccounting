@@ -1,5 +1,29 @@
 package com.stupidbeauty.hxaccounting.budget;
 
+import java.util.List;
+
+/**
+ * 单条支出记录（用于预算计算）
+ *
+ * <p>这是 BudgetCalculator 的输入数据结构的简化版。
+ * 完整的事务实体在 {@code TransactionEntity} 中，
+ * 这里只取预算计算需要的字段。
+ */
+class ExpenseRecord {
+    /** 金额（单位：元） */
+    public final double amount;
+    /** 时间戳（毫秒） */
+    public final long timestamp;
+    /** 是否异常支出（异常支出会被排除，不计入日均） */
+    public final boolean isAnomaly;
+
+    public ExpenseRecord(double amount, long timestamp, boolean isAnomaly) {
+        this.amount = amount;
+        this.timestamp = timestamp;
+        this.isAnomaly = isAnomaly;
+    }
+}
+
 /**
  * 预算计算器
  *
@@ -33,4 +57,48 @@ public class BudgetCalculator {
      * 默认窗口大小（天）
      */
     public static final int DEFAULT_WINDOW_SIZE = 7;
+
+    /**
+     * 计算日均支出
+     *
+     * <p>从给定窗口（天数）内的支出记录中：
+     * <ol>
+     *   <li>排除异常支出（isAnomaly == true）</li>
+     *   <li>只保留支出（amount > 0）</li>
+     *   <li>总金额 ÷ 窗口天数 = 日均</li>
+     * </ol>
+     *
+     * @param expenses       窗口内的支出记录列表
+     * @param windowSize     窗口大小（天），建议 7 或 30
+     * @param excludeAnomaly 是否排除异常支出
+     * @return 日均支出（元/天）。如果窗口内无有效支出，返回 0。
+     */
+    public static double calculateDailyAvg(
+            List<ExpenseRecord> expenses,
+            int windowSize,
+            boolean excludeAnomaly) {
+
+        if (windowSize <= 0) {
+            throw new IllegalArgumentException("windowSize must be > 0, got: " + windowSize);
+        }
+
+        if (expenses == null || expenses.isEmpty()) {
+            return 0.0;
+        }
+
+        double total = 0.0;
+        for (ExpenseRecord record : expenses) {
+            // 只算支出（金额为正）
+            if (record.amount <= 0) {
+                continue;
+            }
+            // 如果需要排除异常，且本条是异常，则跳过
+            if (excludeAnomaly && record.isAnomaly) {
+                continue;
+            }
+            total += record.amount;
+        }
+
+        return total / windowSize;
+    }
 }

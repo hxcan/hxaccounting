@@ -73,10 +73,25 @@ public interface TransactionDao {
            "AND transaction_time < :endOfDay")
     LiveData<Double> getTodayTotal(long accountId, long startOfDay, long endOfDay);
 
+    /**
+     * 本周支出合计（feat/transaction-summary）
+     */
+    @Query("SELECT SUM(amount) FROM transactions WHERE account_id = :accountId " +
+           "AND type = 'EXPENSE' AND transaction_time >= :startOfWeek")
+    LiveData<Double> getWeekTotal(long accountId, long startOfWeek);
+
     @Query("SELECT SUM(amount) FROM transactions WHERE account_id = :accountId " +
            "AND type = 'EXPENSE' AND transaction_time >= :startOfMonth " +
            "AND transaction_time < :endOfMonth")
     LiveData<Double> getMonthTotal(long accountId, long startOfMonth, long endOfMonth);
+
+    /**
+     * 本月收入合计（feat/transaction-summary）
+     */
+    @Query("SELECT SUM(amount) FROM transactions WHERE account_id = :accountId " +
+           "AND type = 'INCOME' AND transaction_time >= :startOfMonth " +
+           "AND transaction_time < :endOfMonth")
+    LiveData<Double> getMonthIncome(long accountId, long startOfMonth, long endOfMonth);
 
     // --- 删除某账本所有流水（级联已在Entity定义，这里做显式清理）---
 

@@ -71,9 +71,15 @@ public class AccountsActivity extends AppCompatActivity {
     private void loadAccounts() {
         rvAccounts.setLayoutManager(new LinearLayoutManager(this));
         accountRepository.getActiveAccounts().observe(this, accounts -> {
+            // 修复 #859864944989：每次 LiveData 回调都用最新的数据调用 setAccounts
+            // 之前只调用 notifyDataSetChanged()，但 adapter 内部的 accounts 还是旧引用
+            // 导致新创建的账本不显示在列表里
             if (accounts == null || accounts.isEmpty()) {
                 emptyView.setVisibility(View.VISIBLE);
                 rvAccounts.setVisibility(View.GONE);
+                if (accountAdapter != null) {
+                    accountAdapter.setAccounts(null);
+                }
             } else {
                 emptyView.setVisibility(View.GONE);
                 rvAccounts.setVisibility(View.VISIBLE);
@@ -92,7 +98,8 @@ public class AccountsActivity extends AppCompatActivity {
                     });
                     rvAccounts.setAdapter(accountAdapter);
                 } else {
-                    accountAdapter.notifyDataSetChanged();
+                    // 用最新数据更新 adapter 内部列表，并通知刷新
+                    accountAdapter.setAccounts(accounts);
                 }
                 long currentId = accountRepository.getCurrentAccountIdSync();
                 accountAdapter.setCurrentAccountId(currentId);

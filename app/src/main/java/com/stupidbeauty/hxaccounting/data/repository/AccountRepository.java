@@ -32,6 +32,10 @@ import java.util.concurrent.Executors;
  * Bug 修复（#859357536826 / #859820582382）：
  * - 使用 Transformations.switchMap 让 getCurrentAccount 真正响应 currentAccountIdLive 变化
  * - 解决"启动后顶部不显示当前账本"的问题
+ *
+ * Bug 修复（#859841173960）：
+ * - createAndSetCurrent 在 ioExecutor 后台线程执行，必须用 postValue 而不是 setValue
+ * - setValue 只能在主线程调用，后台线程调用会抛 IllegalStateException
  */
 public class AccountRepository {
     private static final String TAG = "AccountRepository";
@@ -283,7 +287,8 @@ public class AccountRepository {
                     .edit()
                     .putLong(KEY_CURRENT_ACCOUNT_ID, id)
                     .apply();
-            currentAccountIdLive.setValue(id);
+            // 修复 #859841173960：用 postValue 而不是 setValue（后台线程必须用 postValue，线程安全）
+            currentAccountIdLive.postValue(id);
             if (callback != null) {
                 callback.onInserted(id);
             }

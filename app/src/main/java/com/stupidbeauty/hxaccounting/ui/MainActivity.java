@@ -22,6 +22,7 @@ import com.stupidbeauty.hxaccounting.data.entity.Account;
 import com.stupidbeauty.hxaccounting.data.entity.Transaction;
 import com.stupidbeauty.hxaccounting.data.repository.AccountRepository;
 import com.stupidbeauty.hxaccounting.data.repository.TransactionRepository;
+import com.stupidbeauty.hxaccounting.utils.FileLogger;
 
 import java.util.List;
 
@@ -33,6 +34,7 @@ import java.util.List;
  * 4. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
  */
 public class MainActivity extends AppCompatActivity {
+    private static final String TAG = "MainActivity";
 
     private TextView tvCurrentAccountName;
     private TextView tvCurrentAccountIcon;
@@ -56,12 +58,13 @@ public class MainActivity extends AppCompatActivity {
 
         accountRepository = new AccountRepository(this);
         transactionRepository = new TransactionRepository(this);
-
         bindViews();
         setupFab();
         setupAccountBar();
         setupTransactionList();
         observeCurrentAccount();
+
+        FileLogger.i(TAG, "onCreate 完成，初始化完毕");
     }
 
     private void bindViews() {
@@ -80,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
         fabAdd.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, QuickAddActivity.class);
             startActivity(intent);
+            FileLogger.d(TAG, "点击 FAB，进入快速记账页面");
         });
     }
 
@@ -88,6 +92,7 @@ public class MainActivity extends AppCompatActivity {
         btnManageAccounts.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, AccountsActivity.class);
             startActivity(intent);
+            FileLogger.d(TAG, "点击管理按钮，进入账本管理页面");
         });
         accountBar.setOnClickListener(v -> showAccountSwitcher(accountBar));
     }
@@ -96,30 +101,44 @@ public class MainActivity extends AppCompatActivity {
         rvTransactions.setLayoutManager(new LinearLayoutManager(this));
         transactionAdapter = new TransactionAdapter(this);
         rvTransactions.setAdapter(transactionAdapter);
+        FileLogger.d(TAG, "流水列表初始化完成");
     }
 
     private void observeCurrentAccount() {
+        FileLogger.i(TAG, "【观察】observeCurrentAccount 开始");
         currentAccountLive = accountRepository.getCurrentAccount();
         if (currentAccountLive != null) {
+            FileLogger.i(TAG, "【观察】注册 LiveData 观察者");
             currentAccountLive.observe(this, this::onCurrentAccountChanged);
+        } else {
+            FileLogger.w(TAG, "【观察】currentAccountLive 为 null！");
         }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        FileLogger.i(TAG, "onResume");
         long id = accountRepository.getCurrentAccountIdSync();
+        FileLogger.d(TAG, "onResume 读取当前账本 ID = " + id);
         if (id != -1L) {
+            FileLogger.d(TAG, "onResume 重新观察账本 ID = " + id);
             accountRepository.getAccountById(id).observe(this, this::onCurrentAccountChanged);
         }
     }
 
     private void onCurrentAccountChanged(Account account) {
+        if (account == null) {
+            FileLogger.d(TAG, "【回调】onCurrentAccountChanged: account = null");
+        } else {
+            FileLogger.d(TAG, "【回调】onCurrentAccountChanged: account.id = " + account.getId() + ", name = " + account.getName());
+        }
         updateCurrentAccountDisplay(account);
         loadTransactionsFor(account);
     }
 
     private void updateCurrentAccountDisplay(Account account) {
+        FileLogger.d(TAG, "【显示】updateCurrentAccountDisplay 开始，account = " + (account == null ? "null" : account.getName()));
         if (account == null) {
             tvCurrentAccountName.setText("未选择账本");
             tvCurrentAccountIcon.setText("📒");
@@ -128,8 +147,10 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 // ignore
             }
+            FileLogger.d(TAG, "【显示】更新为「未选择账本」");
             return;
         }
+
         tvCurrentAccountName.setText(account.getName());
         tvCurrentAccountIcon.setText(iconToEmoji(account.getName(), account.getType()));
         try {
@@ -137,9 +158,11 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             currentAccountIconContainer.setCardBackgroundColor(Color.parseColor("#FF6B6B"));
         }
+        FileLogger.d(TAG, "【显示】更新为账本：「" + account.getName() + "」");
     }
 
     private void loadTransactionsFor(Account account) {
+        FileLogger.d(TAG, "【流水】loadTransactionsFor 开始");
         if (account == null) {
             currentAccountIdShown = -1L;
             transactionAdapter.setTransactions(null);
@@ -147,10 +170,14 @@ public class MainActivity extends AppCompatActivity {
             emptyView.setVisibility(View.VISIBLE);
             return;
         }
+
         if (account.getId() == currentAccountIdShown) {
+            FileLogger.d(TAG, "【流水】账本 ID 未变化，跳过刷新");
             return;
         }
+
         currentAccountIdShown = account.getId();
+
         if (currentTransactionsLive != null) {
             currentTransactionsLive.removeObservers(this);
         }
@@ -160,40 +187,52 @@ public class MainActivity extends AppCompatActivity {
                 transactionAdapter.setTransactions(null);
                 rvTransactions.setVisibility(View.GONE);
                 emptyView.setVisibility(View.VISIBLE);
+                FileLogger.d(TAG, "【流水】账本「" + account.getName() + "」无流水数据");
             } else {
                 transactionAdapter.setTransactions(transactions);
                 rvTransactions.setVisibility(View.VISIBLE);
                 emptyView.setVisibility(View.GONE);
+                FileLogger.d(TAG, "【流水】账本「" + account.getName() + "」加载了 " + transactions.size() + " 笔流水");
             }
         });
     }
 
     private void showAccountSwitcher(View anchor) {
+        FileLogger.i(TAG, "【切换】showAccountSwitcher 被点击");
         LiveData<List<Account>> accountsLive = accountRepository.getActiveAccounts();
         accountsLive.observe(this, accounts -> {
             if (accounts == null || accounts.isEmpty()) {
                 Toast.makeText(this, "还没有账本，请先创建", Toast.LENGTH_SHORT).show();
+                FileLogger.w(TAG, "【切换】没有账本可选");
                 return;
             }
+
+            FileLogger.d(TAG, "【切换】找到 " + accounts.size() + " 个账本");
             PopupMenu popup = new PopupMenu(this, anchor);
             long currentId = accountRepository.getCurrentAccountIdSync();
+            FileLogger.d(TAG, "【切换】当前账本 ID = " + currentId);
+
             for (int i = 0; i < accounts.size(); i++) {
                 Account acc = accounts.get(i);
-                String name = acc.getName();
-                if (acc.getId() == currentId) {
-                    name = "✓ " + name;
-                }
-                popup.getMenu().add(0, i, i, name);
+                String displayName = (acc.getId() == currentId ? "✓ " : "   ") + acc.getName();
+                popup.getMenu().add(0, i, i, displayName);
             }
-            popup.getMenu().add(0, 999, 999, "+ 管理账本...");
+            popup.getMenu().add(0, 999, 999, "管理账本...");
+
             popup.setOnMenuItemClickListener(item -> {
                 if (item.getItemId() == 999) {
                     Intent intent = new Intent(MainActivity.this, AccountsActivity.class);
                     startActivity(intent);
                     return true;
                 }
+
                 Account selected = accounts.get(item.getItemId());
+                FileLogger.i(TAG, "【切换】用户选择了账本：「" + selected.getName() + "」(ID=" + selected.getId() + ")");
+                FileLogger.i(TAG, "【切换】调用 setCurrentAccountId() 修改当前账本");
+
                 accountRepository.setCurrentAccountId(selected.getId());
+
+                FileLogger.i(TAG, "【切换】setCurrentAccountId() 调用完毕，弹出 Toast");
                 Toast.makeText(this, "已切换到：" + selected.getName(), Toast.LENGTH_SHORT).show();
                 return true;
             });
@@ -224,6 +263,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        FileLogger.i(TAG, "onDestroy，MainActivity 销毁");
         if (accountRepository != null) {
             accountRepository.shutdown();
         }

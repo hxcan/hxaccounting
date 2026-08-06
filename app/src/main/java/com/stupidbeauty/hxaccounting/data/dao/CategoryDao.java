@@ -44,6 +44,13 @@ public interface CategoryDao {
            "ORDER BY sort_order ASC")
     LiveData<List<Category>> getSystemCategories();
 
+    /**
+     * 同步获取系统分类数量（用于 #859882136239 修复：
+     * 检测数据库是否为空，决定是否需要插入种子数据）。
+     */
+    @Query("SELECT COUNT(*) FROM categories WHERE is_system = 1")
+    int getSystemCategoriesSync();
+
     // --- 单个分类 ---
 
     @Query("SELECT * FROM categories WHERE id = :id LIMIT 1")

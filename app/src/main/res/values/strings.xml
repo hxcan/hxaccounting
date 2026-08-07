@@ -20,7 +20,7 @@
     <string name="dialog_create_account_title">新建账本</string>
     <string name="dialog_edit_account_title">编辑账本</string>
     <string name="dialog_delete_account_title">删除账本？</string>
-    <string name="dialog_delete_account_message">账本下的所有流水也会被删除，无法恢复。\n\n确定要删除 "%1$s" 吗？</string>
+    <string name="dialog_delete_account_message">账本下的所有流水也会被删除，无法恢复。\n\n确定要删除 \"%1$s\" 吗？</string>
     <string name="error_account_name_empty">请输入账本名称</string>
     <string name="error_account_name_exists">账本名称已存在</string>
     <string name="msg_account_created">账本创建成功</string>
@@ -97,4 +97,17 @@
     <string name="cat_parenting">育儿</string>
     <string name="cat_income">收入</string>
     <string name="cat_other">其他</string>
+
+    <!-- v2 预算设置页面 -->
+    <string name="title_budget_settings">预算设置</string>
+    <string name="label_period_days">预算周期</string>
+    <string name="label_period_days_hint">按最近多少天的流水计算日均预算</string>
+    <string name="period_7_days">7 天</string>
+    <string name="period_30_days">30 天（推荐）</string>
+    <string name="period_90_days">90 天</string>
+    <string name="period_custom">自定义</string>
+    <string name="dialog_period_custom_title">自定义周期（天）</string>
+    <string name="hint_custom_period">请输入周期天数（7-365）</string>
+    <string name="error_period_invalid">周期必须在 7-365 之间</string>
+    <string name="msg_settings_saved">设置已保存</string>
 </resources>

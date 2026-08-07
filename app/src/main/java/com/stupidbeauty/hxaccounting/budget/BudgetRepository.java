@@ -7,6 +7,7 @@ import androidx.lifecycle.Transformations;
 import com.stupidbeauty.hxaccounting.data.dao.TransactionDao;
 import com.stupidbeauty.hxaccounting.data.entity.Transaction;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.concurrent.ExecutorService;
  *
  * @author 未来姐姐
  * @since 2026-08-06
+ * @updated 2026-08-08 适配 BudgetCalculator v2 新签名（补 LocalDate today 参数）
  */
 public class BudgetRepository {
 
@@ -55,9 +57,9 @@ public class BudgetRepository {
      *
      * @param accountId      账本 ID
      * @param windowSize     窗口大小（天），建议 7 或 30
-     * @param rate           倍率（&gt; 0）
+     * @param rate           倍率（> 0）
      * @param excludeAnomaly 是否排除异常支出
-     * @return LiveData&lt;BudgetResult&gt; 当流水变化时自动重算
+     * @return LiveData<BudgetResult> 当流水变化时自动重算
      */
     public LiveData<BudgetResult> getBudgetLive(
             long accountId, int windowSize, double rate, boolean excludeAnomaly) {
@@ -81,10 +83,13 @@ public class BudgetRepository {
         final List<Transaction>[] cachedExpenses = new List[]{new ArrayList<>()};
         final Double[] cachedSpent = new Double[]{0.0};
 
+        // v2 修复：取一次 now，预算计算用同一时间基准（避免 today 与 window 跨日漂移）
+        final LocalDate today = LocalDate.now();
+
         Runnable recompute = () -> {
             List<ExpenseRecord> records = toExpenseRecords(cachedExpenses[0]);
             BudgetResult r = BudgetCalculator.calculateFromHistory(
-                records, windowSize, rate, cachedSpent[0], excludeAnomaly);
+                records, windowSize, rate, cachedSpent[0], today, excludeAnomaly);
             result.setValue(r);
         };
 
@@ -124,6 +129,9 @@ public class BudgetRepository {
         long todayStart = getStartOfDay(now);
         long todayEnd = todayStart + 24L * 3600 * 1000;
 
+        // v2 修复：用 now 转 LocalDate，与窗口期查询用同一时间基准
+        final LocalDate today = LocalDate.now();
+
         // 同步查询（必须在 IO 线程调用）
         // 这里假设调用方已经在 IO 线程
         List<Transaction> expenses =
@@ -133,7 +141,7 @@ public class BudgetRepository {
 
         List<ExpenseRecord> records = toExpenseRecords(expenses);
         return BudgetCalculator.calculateFromHistory(
-                records, windowSize, rate, todaySpent != null ? todaySpent : 0.0, excludeAnomaly);
+                records, windowSize, rate, todaySpent != null ? todaySpent : 0.0, today, excludeAnomaly);
     }
 
     // ============ 工具方法 ============

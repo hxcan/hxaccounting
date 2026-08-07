@@ -46,6 +46,7 @@ jobs:
       run: ./gradlew test
 
     - name: Decode release keystore from secret
+      id: decode-keystore
       if: ${{ env.HAS_KEYSTORE == 'true' }}
       run: |
         echo "${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 }}" | base64 -d > app/release.keystore
@@ -60,7 +61,6 @@ jobs:
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
         ALIAS_PASSWORD: ${{ secrets.ALIAS_PASSWORD }}
-        HAS_KEYSTORE: 'true'
       run: ./gradlew assembleRelease
 
     - name: Upload debug APK

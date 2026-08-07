@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
  *
  * @author 未来姐姐
  * @since 2026-08-06
+ * @updated 2026-08-08 默认窗口由 7 天改为 30 天（对齐 v2 算法默认周期）
  */
 public class BudgetViewModel extends AndroidViewModel {
 
@@ -36,7 +37,13 @@ public class BudgetViewModel extends AndroidViewModel {
     private final ExecutorService ioExecutor;
     private final MutableLiveData<Long> currentAccountIdLive = new MutableLiveData<>();
     private final MutableLiveData<Double> currentRateLive = new MutableLiveData<>(1.0);
-    private final MutableLiveData<Integer> windowSizeLive = new MutableLiveData<>(7);
+    /**
+     * v2 修复：默认窗口由 7 天改为 30 天，对齐 BudgetCalculator.DEFAULT_PERIOD_DAYS。
+     * 主人 2026-08-08 拍板的"周期默认 30 天"在此生效。
+     * （每个账本独立的真实周期由 BudgetSettingsViewModel 提供，
+     *  这里只是兜底默认值。）
+     */
+    private final MutableLiveData<Integer> windowSizeLive = new MutableLiveData<>(30);
     private LiveData<BudgetResult> budgetResultLive;
 
     public BudgetViewModel(@NonNull Application application) {

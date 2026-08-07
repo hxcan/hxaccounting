@@ -36,7 +36,7 @@ import java.util.Locale;
  *
  * @author 未来姐姐
  * @since 2026-08-06
- * @updated 2026-08-08 自适应窗口算法 v2 接入
+ * @updated 2026-08-08 自适应窗口算法 v2 接入（含冷启动期 UI 提示）
  */
 public class BudgetCardBinder {
 
@@ -49,6 +49,7 @@ public class BudgetCardBinder {
     private final TextView tvSpent;
     private final TextView tvWindowLabel;
     private final TextView tvUsagePercent;
+    private final TextView tvColdStartHint;  // v2 新增：冷启动期提示
     private final TextView btnAdjustRate;
     private final ProgressBar progressUsage;
 
@@ -69,6 +70,7 @@ public class BudgetCardBinder {
         this.tvSpent = cardView.findViewById(R.id.tvBudgetSpent);
         this.tvWindowLabel = cardView.findViewById(R.id.tvBudgetWindowLabel);
         this.tvUsagePercent = cardView.findViewById(R.id.tvBudgetUsagePercent);
+        this.tvColdStartHint = cardView.findViewById(R.id.tvBudgetColdStartHint);  // v2 新增
         this.btnAdjustRate = cardView.findViewById(R.id.btnAdjustRate);
         this.progressUsage = cardView.findViewById(R.id.progressBudgetUsage);
 
@@ -118,7 +120,7 @@ public class BudgetCardBinder {
     }
 
     /**
-     * OK 状态渲染（v2：使用 periodDays 动态窗口标签）
+     * OK 状态渲染（v2：使用 periodDays 动态窗口标签 + 冷启动期提示）
      */
     private void renderOk(BudgetResult result) {
         FileLogger.d(TAG, String.format(Locale.US,
@@ -168,12 +170,13 @@ public class BudgetCardBinder {
         tvWindowLabel.setText(String.format(Locale.getDefault(),
                 "近%d天 × 1.0", result.periodDays));
 
-        // 冷启动期提示（v2 新增；提示文案走 Toast，避免改 layout）
+        // 冷启动期提示（v2 新增）
         if (result.isColdStart) {
+            tvColdStartHint.setVisibility(View.VISIBLE);
             FileLogger.i(TAG, "冷启动期：actualDays=" + result.actualDays
                     + " < periodDays=" + result.periodDays);
-            // 若 layout 中后续会加 tvColdStartHint，这里再设置；目前暂用 Log 记录
-            // tvColdStartHint.setText("💡 正在用实际记账天数计算");
+        } else {
+            tvColdStartHint.setVisibility(View.GONE);
         }
     }
 
@@ -192,6 +195,8 @@ public class BudgetCardBinder {
         // 窗口标签仍然按 periodDays 显示（即使还没数据）
         tvWindowLabel.setText(String.format(Locale.getDefault(),
                 "近%d天 × 1.0", result.periodDays));
+        // 隐藏冷启动期提示（积累中不属于冷启动）
+        tvColdStartHint.setVisibility(View.GONE);
     }
 
     /**
@@ -204,6 +209,9 @@ public class BudgetCardBinder {
         tvSpent.setText("¥0.00");
         tvUsagePercent.setText("已用 --");
         progressUsage.setProgress(0);
+        if (tvColdStartHint != null) {
+            tvColdStartHint.setVisibility(View.GONE);
+        }
     }
 
     /**

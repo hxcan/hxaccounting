@@ -13,28 +13,31 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * BudgetCalculator 单元测试（自适应窗口算法 v2）
+ * BudgetCalculator 单元测试（自适应窗口算法 v2.1）
  *
  * <p>覆盖任务要求的 6 个分支：
  * <ul>
  *   <li>testNoData()：没有流水</li>
- *   <li>testCollectingData()：actualDays == 0（仅今天记了 1 笔）</li>
+ *   <li>testCollectingData()：仅今天记了 1 笔（actualDays == 0）</li>
  *   <li>testColdStart()：0 < actualDays < periodDays（冷启动期）</li>
  *   <li>testStable()：actualDays >= periodDays（稳定期）</li>
- *   <li>testTodayNotIncluded()：今天的不计入分母</li>
+ *   <li>testTodayFullyExcluded()：今天的支出既不计入分子也不计入分母</li>
  *   <li>testMidGapIncluded()：中间无流水日计入分母</li>
  * </ul>
  *
- * <p>主人 2026-08-08 拍板依据：
+ * <p>主人 2026-08-08 验收反馈（v2.1 修复）：
  * <ul>
- *   <li>"今天"不计入分母</li>
- *   <li>中间无流水日计入分母</li>
- *   <li>周期默认 30 天</li>
- *   <li>仅 1 天数据：数据积累中</li>
+ *   <li>"今天"既不计入分子也不计入分母</li>
+ *   <li>"今天正是此刻正在发生的事情，就是我们能够通过控制来缩减开支或者保持开支
+ *       或者说扩大开支的手段"</li>
  * </ul>
  *
- * <p>v2.1 修复：测试改用 {@link ZoneId#systemDefault()}（与 BudgetCalculator 内部一致），
- * 避免 CI runner 在 UTC 下因时区差异导致 7 个时间相关用例失败。
+ * <p>v2.1 关键修复：
+ * <ul>
+ *   <li>分子：仅历史支出（严格剔除今天的流水）</li>
+ *   <li>分母：第一笔记账日 → 昨天（不含今天）</li>
+ *   <li>今日已花（todaySpent）只参与 remaining = suggested - todaySpent</li>
+ * </ul>
  *
  * @author 未来姐姐
  * @since 2026-08-08
@@ -87,7 +90,7 @@ public class BudgetCalculatorTest {
     }
 
     // ============================================================
-    // 2. testCollectingData：actualDays == 0 → COLLECTING_DATA
+    // 2. testCollectingData：仅今天记了 1 笔 → COLLECTING_DATA
     // ============================================================
 
     @Test
@@ -113,8 +116,8 @@ public class BudgetCalculatorTest {
     @Test
     public void testColdStart() {
         LocalDate today = LocalDate.of(2026, 8, 8);
-        // 5 天前开始记，3 天，每天 10 元 → total = 30
-        // actualDays = 5，periodDays = 30 → 冷启动期
+        // 5 天前开始记，3 天，每天 10 元 → 历史 total = 30（不含今天）
+        // actualDays = 5（不含今天），periodDays = 30 → 冷启动期
         // 期望日均 = 30 / 5 = 6.0
         List<ExpenseRecord> expenses = new ArrayList<>();
         expenses.add(makeRecord(today.minusDays(5), 10.0));
@@ -140,7 +143,7 @@ public class BudgetCalculatorTest {
     public void testStable() {
         LocalDate today = LocalDate.of(2026, 8, 8);
         // 35 天前开始记，每天 10 元，共 35 笔记账（中间无空缺）
-        // total = 350，actualDays = 35，periodDays = 30 → 稳定期
+        // 历史 total = 350（不含今天），actualDays = 35，periodDays = 30 → 稳定期
         // 期望日均 = 350 / 30 = 11.666...
         List<ExpenseRecord> expenses = new ArrayList<>();
         for (int i = 1; i <= 35; i++) {
@@ -159,34 +162,38 @@ public class BudgetCalculatorTest {
     }
 
     // ============================================================
-    // 5. testTodayNotIncluded：今天的支出不计入分母
+    // 5. testTodayFullyExcluded（v2.1 主人验收反馈）：
+    //    今天既不计入分子也不计入分母
     // ============================================================
 
     @Test
-    public void testTodayNotIncluded() {
+    public void testTodayFullyExcluded() {
         LocalDate today = LocalDate.of(2026, 8, 8);
-        // 3 天前开始记，每天 10 元，今天也记了一笔 100 元（异常大）
-        // 期望：today 这 100 元仍计入分子（total），但 today 不计入分母
-        // actualDays = 3，periodDays = 30 → 冷启动期
-        // total = 10*3 + 100 = 130
-        // 日均 = 130 / 3 ≈ 43.333...
+        // 历史流水：3 天前 10 元 + 2 天前 10 元 + 1 天前 10 元（不含今天）
+        // 历史 total = 30
+        // actualDays = 3（不含今天，因为今天没被计入）
+        // periodDays = 30 → 冷启动期
+        // 期望日均 = 30 / 3 = 10
+        // 今天另花了 100 元，但不影响日均，只影响 remaining
+        // remaining = 10 - 100 = -90
         List<ExpenseRecord> expenses = new ArrayList<>();
         expenses.add(makeRecord(today.minusDays(3), 10.0));
         expenses.add(makeRecord(today.minusDays(2), 10.0));
         expenses.add(makeRecord(today.minusDays(1), 10.0));
-        expenses.add(makeRecord(today, 100.0));
+        expenses.add(makeRecord(today, 100.0)); // 今天的支出
 
         BudgetResult result = BudgetCalculator.calculateFromHistory(
                 expenses, 30, 1.0, 100.0, today, false);
 
         assertNotNull(result);
         assertEquals(BudgetResult.Status.OK, result.status);
-        // 分母是 3（不含今天）
+        // v2.1 关键断言：分子不含今天
+        // total = 10 + 10 + 10 = 30（今天的 100 元被剔除）
+        assertEquals(10.0, result.suggestedBudget, 0.001);
+        // 分母不含今天
         assertEquals(3, result.actualDays);
-        // 日均 = 130 / 3 ≈ 43.333
-        assertEquals(130.0 / 3.0, result.suggestedBudget, 0.001);
-        // remaining = 43.333 - 100（今天已花）= -56.666
-        assertEquals(130.0 / 3.0 - 100.0, result.remaining, 0.001);
+        // remaining = suggested - todaySpent = 10 - 100 = -90
+        assertEquals(10.0 - 100.0, result.remaining, 0.001);
     }
 
     // ============================================================
@@ -196,9 +203,9 @@ public class BudgetCalculatorTest {
     @Test
     public void testMidGapIncluded() {
         LocalDate today = LocalDate.of(2026, 8, 8);
-        // 5 天前记了 1 笔，3 天前记了 1 笔（中间 4 天、2 天没流水）
+        // 5 天前记了 1 笔（20 元），3 天前记了 1 笔（30 元）（不含今天）
         // 主人原话：中间无流水日计入分母
-        // actualDays = 5（第一笔记账日 = today-5）
+        // actualDays = 5（第一笔记账日 = today-5，不含今天）
         List<ExpenseRecord> expenses = new ArrayList<>();
         expenses.add(makeRecord(today.minusDays(5), 20.0));
         expenses.add(makeRecord(today.minusDays(3), 30.0));
@@ -208,7 +215,7 @@ public class BudgetCalculatorTest {
 
         assertNotNull(result);
         assertEquals(BudgetResult.Status.OK, result.status);
-        // 分母按"第一笔记账日 → 今天"算，不是按流水数
+        // 分母按"第一笔记账日 → 今天（不含）"算，不是按流水数
         assertEquals(5, result.actualDays);
         // total = 50，日均 = 50 / 5 = 10
         assertEquals(10.0, result.suggestedBudget, 0.001);
@@ -281,5 +288,33 @@ public class BudgetCalculatorTest {
 
         BudgetCalculator.calculateFromHistory(
                 expenses, 30, 0.0, 0.0, today, false);
+    }
+
+    // ============================================================
+    // 11. v2.1 新增：实主人验收场景的回归测试
+    //     昨天记 ¥371.24，今天又花了 ¥300.37
+    //     → 日均 = 371.24 / 1 = 371.24（不含今天）
+    //     → remaining = 371.24 - 300.37 = 70.87
+    // ============================================================
+
+    @Test
+    public void testMasterAcceptanceScenario() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        // 主人截图数据：昨天支出 371.24，今天支出 300.37
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today.minusDays(1), 371.24)); // 昨天
+        expenses.add(makeRecord(today, 300.37));              // 今天（应被剔除）
+
+        BudgetResult result = BudgetCalculator.calculateFromHistory(
+                expenses, 30, 1.0, 300.37, today, false);
+
+        assertNotNull(result);
+        assertEquals(BudgetResult.Status.OK, result.status);
+        // 分母 = 1（只有昨天一天历史）
+        assertEquals(1, result.actualDays);
+        // 日均 = 371.24 / 1 = 371.24（今天的 300.37 被剔除）
+        assertEquals(371.24, result.suggestedBudget, 0.01);
+        // remaining = 371.24 - 300.37 = 70.87
+        assertEquals(70.87, result.remaining, 0.01);
     }
 }

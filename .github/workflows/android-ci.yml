@@ -2,9 +2,10 @@ name: Android CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, release/** ]
   pull_request:
     branches: [ master ]
+  workflow_dispatch:
 
 # Grant write permission for GITHUB_TOKEN (required to create releases)
 permissions:
@@ -44,8 +45,23 @@ jobs:
     - name: Run unit tests
       run: ./gradlew test
 
+    - name: Decode release keystore from secret
+      if: ${{ env.HAS_KEYSTORE == 'true' }}
+      run: |
+        echo "${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 }}" | base64 -d > app/release.keystore
+
     - name: Build debug APK
       run: ./gradlew assembleDebug
+
+    - name: Build release APK
+      if: ${{ env.HAS_KEYSTORE == 'true' }}
+      env:
+        KEYSTORE_FILE: app/release.keystore
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+        ALIAS_PASSWORD: ${{ secrets.ALIAS_PASSWORD }}
+        HAS_KEYSTORE: 'true'
+      run: ./gradlew assembleRelease
 
     - name: Upload debug APK
       uses: actions/upload-artifact@v4
@@ -53,6 +69,14 @@ jobs:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 7
+
+    - name: Upload release APK
+      if: ${{ env.HAS_KEYSTORE == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release
+        path: app/build/outputs/apk/release/app-release.apk
+        retention-days: 30
 
   release-debug-apk:
     name: Release Debug APK

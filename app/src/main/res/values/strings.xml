@@ -110,4 +110,8 @@
     <string name="hint_custom_period">请输入周期天数（7-365）</string>
     <string name="error_period_invalid">周期必须在 7-365 之间</string>
     <string name="msg_settings_saved">设置已保存</string>
+
+    <!-- v1.0.0 新增 欢迎语 -->
+    <string name="welcome_title">欢迎使用太极记账 v1.0.0</string>
+    <string name="welcome_message">自适应预算，量入为出</string>
 </resources>

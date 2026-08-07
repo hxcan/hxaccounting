@@ -5,6 +5,7 @@ import androidx.annotation.NonNull;
 import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
+import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
 import com.stupidbeauty.hxaccounting.data.dao.*;
@@ -17,8 +18,14 @@ import java.util.concurrent.Executors;
 
 /**
  * 太极记账 Room 数据库
- * 包含5张核心表 + 对应的DAO接口
+ * 包含6张核心表 + 对应的DAO接口
  * 提供单例访问 + 首次启动预置分类数据
+ *
+ * <p>版本历史：
+ * <ul>
+ *   <li>v1：5 张表（accounts / transactions / categories / budgets / recommendations）</li>
+ *   <li>v2：新增 budget_settings 表（v2 周期配置），数据迁移已保留全部老数据</li>
+ * </ul>
  */
 @Database(
     entities = {
@@ -26,9 +33,10 @@ import java.util.concurrent.Executors;
         Transaction.class,
         Category.class,
         Budget.class,
-        Recommendation.class
+        Recommendation.class,
+        BudgetSettings.class
     },
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 public abstract class TaijiDatabase extends RoomDatabase {
@@ -42,6 +50,60 @@ public abstract class TaijiDatabase extends RoomDatabase {
     public abstract CategoryDao categoryDao();
     public abstract BudgetDao budgetDao();
     public abstract RecommendationDao recommendationDao();
+    public abstract BudgetSettingsDao budgetSettingsDao();
+
+    /**
+     * v1 → v2 数据迁移：新增 budget_settings 表
+     *
+     * <p>迁移策略（数据零丢失）：
+     * <ol>
+     *   <li>新建 budget_settings 表，period_days 默认 30</li>
+     *   <li>从老 accounts 表读出所有账本</li>
+     *   <li>为每个老账本插入一条默认 BudgetSettings（periodDays=30）</li>
+     *   <li>原有 5 张表数据完全不动</li>
+     * </ol>
+     *
+     * <p>注意：账本删除时 budget_settings 会通过外键 CASCADE 自动清理（v2 实体已声明）。
+     */
+    static final Migration MIGRATION_1_2 = new Migration(1, 2) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase db) {
+            // 1. 新建 budget_settings 表（不含外键，避免迁移期间 CASCADE 触发意外）
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `budget_settings` (" +
+                "`account_id` INTEGER NOT NULL, " +
+                "`period_days` INTEGER NOT NULL DEFAULT 30, " +
+                "`created_at` INTEGER NOT NULL, " +
+                "`updated_at` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`account_id`))"
+            );
+
+            // 2. 为每个老账本创建默认 BudgetSettings（periodDays=30）
+            final long now = System.currentTimeMillis();
+            db.execSQL(
+                "INSERT OR IGNORE INTO budget_settings (account_id, period_days, created_at, updated_at) " +
+                "SELECT id, 30, " + now + ", " + now + " FROM accounts"
+            );
+
+            // 3. 补充添加外键约束（CASCADE 删除）
+            // SQLite 不支持直接给已有表加外键，只能重建表
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `budget_settings_new` (" +
+                "`account_id` INTEGER NOT NULL, " +
+                "`period_days` INTEGER NOT NULL DEFAULT 30, " +
+                "`created_at` INTEGER NOT NULL, " +
+                "`updated_at` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`account_id`), " +
+                "FOREIGN KEY(`account_id`) REFERENCES `accounts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)"
+            );
+            db.execSQL(
+                "INSERT OR IGNORE INTO budget_settings_new (account_id, period_days, created_at, updated_at) " +
+                "SELECT account_id, period_days, created_at, updated_at FROM budget_settings"
+            );
+            db.execSQL("DROP TABLE IF EXISTS `budget_settings`");
+            db.execSQL("ALTER TABLE `budget_settings_new` RENAME TO `budget_settings`");
+        }
+    };
 
     /**
      * 获取数据库单例
@@ -55,6 +117,7 @@ public abstract class TaijiDatabase extends RoomDatabase {
                             TaijiDatabase.class,
                             DATABASE_NAME
                         )
+                        .addMigrations(MIGRATION_1_2)  // v2：注册迁移
                         .addCallback(new Callback() {
                             @Override
                             public void onCreate(@NonNull SupportSQLiteDatabase db) {

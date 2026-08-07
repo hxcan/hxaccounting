@@ -2,6 +2,7 @@ package com.stupidbeauty.hxaccounting.budget;
 
 import org.junit.Test;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -32,15 +33,19 @@ import static org.junit.Assert.assertTrue;
  *   <li>仅 1 天数据：数据积累中</li>
  * </ul>
  *
+ * <p>v2.1 修复：测试改用 {@link ZoneId#systemDefault()}（与 BudgetCalculator 内部一致），
+ * 避免 CI runner 在 UTC 下因时区差异导致 7 个时间相关用例失败。
+ *
  * @author 未来姐姐
  * @since 2026-08-08
  */
 public class BudgetCalculatorTest {
 
     /**
-     * 固定时区（避免测试机器时区不同导致结果不一致）
+     * 测试用时区：与 BudgetCalculator 内部的 SYSTEM_ZONE 保持一致，
+     * 避免"测试用 Shanghai，生产用 UTC"导致的 day offset 错位。
      */
-    private static final ZoneId TEST_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final ZoneId TEST_ZONE = ZoneId.systemDefault();
 
     /**
      * 把 LocalDate 转成 epoch millis（按 TEST_ZONE 时区）

@@ -2,321 +2,279 @@ package com.stupidbeauty.hxaccounting.budget;
 
 import org.junit.Test;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * BudgetCalculator 单元测试
+ * BudgetCalculator 单元测试（自适应窗口算法 v2）
  *
- * <p>覆盖场景：
+ * <p>覆盖任务要求的 6 个分支：
  * <ul>
- *   <li>正常窗口期日均计算</li>
- *   <li>空数据边界</li>
- *   <li>全异常支出（应被排除）</li>
- *   <li>windowSize 非法值</li>
- *   <li>倍率非法值</li>
- *   <li>calculateFromHistory 完整链路</li>
- *   <li>BudgetResult 使用百分比</li>
+ *   <li>testNoData()：没有流水</li>
+ *   <li>testCollectingData()：actualDays == 0（仅今天记了 1 笔）</li>
+ *   <li>testColdStart()：0 < actualDays < periodDays（冷启动期）</li>
+ *   <li>testStable()：actualDays >= periodDays（稳定期）</li>
+ *   <li>testTodayNotIncluded()：今天的不计入分母</li>
+ *   <li>testMidGapIncluded()：中间无流水日计入分母</li>
+ * </ul>
+ *
+ * <p>主人 2026-08-08 拍板依据：
+ * <ul>
+ *   <li>"今天"不计入分母</li>
+ *   <li>中间无流水日计入分母</li>
+ *   <li>周期默认 30 天</li>
+ *   <li>仅 1 天数据：数据积累中</li>
  * </ul>
  *
  * @author 未来姐姐
+ * @since 2026-08-08
  */
 public class BudgetCalculatorTest {
 
-    // ========== calculateDailyAvg 测试 ==========
+    /**
+     * 固定时区（避免测试机器时区不同导致结果不一致）
+     */
+    private static final ZoneId TEST_ZONE = ZoneId.of("Asia/Shanghai");
 
     /**
-     * 正常场景：7天窗口、总支出 700 → 日均 100
+     * 把 LocalDate 转成 epoch millis（按 TEST_ZONE 时区）
      */
-    @Test
-    public void testDailyAvg_normalWindow() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(100, 0L, false),
-                new ExpenseRecord(200, 0L, false),
-                new ExpenseRecord(400, 0L, false)
-        );
-        double result = BudgetCalculator.calculateDailyAvg(expenses, 7, true);
-        assertEquals(100.0, result, 0.001);
+    private long toEpochMilli(LocalDate date) {
+        return date.atStartOfDay(TEST_ZONE).toInstant().toEpochMilli();
     }
 
     /**
-     * 边界：空列表 → 返回 0
+     * 创建一个 ExpenseRecord（按 TEST_ZONE 时区的当天 0 点）
      */
-    @Test
-    public void testDailyAvg_emptyList() {
-        double result = BudgetCalculator.calculateDailyAvg(
-                Collections.emptyList(), 7, true);
-        assertEquals(0.0, result, 0.001);
+    private ExpenseRecord makeRecord(LocalDate date, double amount) {
+        return makeRecord(date, amount, false);
     }
 
     /**
-     * 边界：null 列表 → 返回 0
+     * 创建一个 ExpenseRecord（可指定异常标记）
      */
-    @Test
-    public void testDailyAvg_nullList() {
-        double result = BudgetCalculator.calculateDailyAvg(null, 7, true);
-        assertEquals(0.0, result, 0.001);
+    private ExpenseRecord makeRecord(LocalDate date, double amount, boolean isAnomaly) {
+        return new ExpenseRecord(amount, toEpochMilli(date), isAnomaly);
     }
 
-    /**
-     * 异常支出被排除：3 条都是异常 → 日均 0
-     */
+    // ============================================================
+    // 1. testNoData：没有流水 → NO_DATA
+    // ============================================================
+
     @Test
-    public void testDailyAvg_allAnomalyExcluded() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(100, 0L, true),
-                new ExpenseRecord(200, 0L, true),
-                new ExpenseRecord(300, 0L, true)
-        );
-        double result = BudgetCalculator.calculateDailyAvg(expenses, 7, true);
-        assertEquals(0.0, result, 0.001);
-    }
+    public void testNoData() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        List<ExpenseRecord> empty = new ArrayList<>();
 
-    /**
-     * 异常支出被排除：混合场景
-     * 总支出 1000，其中 300 是异常
-     * 排除后 700 / 7 = 100
-     */
-    @Test
-    public void testDailyAvg_mixedWithAnomaly() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(100, 0L, false),
-                new ExpenseRecord(300, 0L, true),   // 异常，应排除
-                new ExpenseRecord(600, 0L, false)
-        );
-        double result = BudgetCalculator.calculateDailyAvg(expenses, 7, true);
-        assertEquals(100.0, result, 0.001);
-    }
-
-    /**
-     * 异常支出不被排除（excludeAnomaly=false）
-     * 总支出 1000 / 7 ≈ 142.857
-     */
-    @Test
-    public void testDailyAvg_includeAnomaly() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(100, 0L, false),
-                new ExpenseRecord(300, 0L, true),
-                new ExpenseRecord(600, 0L, false)
-        );
-        double result = BudgetCalculator.calculateDailyAvg(expenses, 7, false);
-        assertEquals(1000.0 / 7.0, result, 0.001);
-    }
-
-    /**
-     * 负数金额（收入）被忽略
-     */
-    @Test
-    public void testDailyAvg_ignoreNegative() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(-500, 0L, false),  // 收入，忽略
-                new ExpenseRecord(700, 0L, false)   // 支出
-        );
-        double result = BudgetCalculator.calculateDailyAvg(expenses, 7, true);
-        assertEquals(100.0, result, 0.001);
-    }
-
-    /**
-     * 边界：windowSize = 0 → 抛 IllegalArgumentException
-     */
-    @Test
-    public void testDailyAvg_zeroWindowSize() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(100, 0L, false)
-        );
-        assertThrows(IllegalArgumentException.class, () ->
-                BudgetCalculator.calculateDailyAvg(expenses, 0, true));
-    }
-
-    /**
-     * 边界：windowSize < 0 → 抛 IllegalArgumentException
-     */
-    @Test
-    public void testDailyAvg_negativeWindowSize() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(100, 0L, false)
-        );
-        assertThrows(IllegalArgumentException.class, () ->
-                BudgetCalculator.calculateDailyAvg(expenses, -1, true));
-    }
-
-    // ========== calculateDailyBudget 测试 ==========
-
-    /**
-     * 正常：日均 100 × 1.0 = 100
-     */
-    @Test
-    public void testDailyBudget_defaultRate() {
-        double result = BudgetCalculator.calculateDailyBudget(100.0, 1.0);
-        assertEquals(100.0, result, 0.001);
-    }
-
-    /**
-     * 节省模式：日均 100 × 0.8 = 80
-     */
-    @Test
-    public void testDailyBudget_saveMode() {
-        double result = BudgetCalculator.calculateDailyBudget(100.0, 0.8);
-        assertEquals(80.0, result, 0.001);
-    }
-
-    /**
-     * 宽松模式：日均 100 × 1.2 = 120
-     */
-    @Test
-    public void testDailyBudget_looseMode() {
-        double result = BudgetCalculator.calculateDailyBudget(100.0, 1.2);
-        assertEquals(120.0, result, 0.001);
-    }
-
-    /**
-     * 边界：rate = 0 → 抛 IllegalArgumentException
-     */
-    @Test
-    public void testDailyBudget_zeroRate() {
-        assertThrows(IllegalArgumentException.class, () ->
-                BudgetCalculator.calculateDailyBudget(100.0, 0.0));
-    }
-
-    /**
-     * 边界：rate < 0 → 抛 IllegalArgumentException
-     */
-    @Test
-    public void testDailyBudget_negativeRate() {
-        assertThrows(IllegalArgumentException.class, () ->
-                BudgetCalculator.calculateDailyBudget(100.0, -1.0));
-    }
-
-    // ========== calculateTodayRemaining / BudgetResult 测试 ==========
-
-    /**
-     * 正常：建议 100，已花 30 → 剩余 70，使用率 30%
-     */
-    @Test
-    public void testTodayRemaining_normal() {
-        BudgetResult result = BudgetCalculator.calculateTodayRemaining(100.0, 30.0);
-        assertEquals(100.0, result.suggestedBudget, 0.001);
-        assertEquals(30.0, result.todaySpent, 0.001);
-        assertEquals(70.0, result.remaining, 0.001);
-        assertEquals(30.0, result.usagePercent, 0.001);
-    }
-
-    /**
-     * 已花超支：剩余为负
-     */
-    @Test
-    public void testTodayRemaining_overBudget() {
-        BudgetResult result = BudgetCalculator.calculateTodayRemaining(100.0, 150.0);
-        assertEquals(-50.0, result.remaining, 0.001);
-        assertEquals(150.0, result.usagePercent, 0.001);
-    }
-
-    /**
-     * 一分钱没花：使用率 0%
-     */
-    @Test
-    public void testTodayRemaining_zeroSpent() {
-        BudgetResult result = BudgetCalculator.calculateTodayRemaining(100.0, 0.0);
-        assertEquals(100.0, result.remaining, 0.001);
-        assertEquals(0.0, result.usagePercent, 0.001);
-    }
-
-    /**
-     * 建议预算为 0：使用率直接为 0（避免除零）
-     */
-    @Test
-    public void testTodayRemaining_zeroBudget() {
-        BudgetResult result = BudgetCalculator.calculateTodayRemaining(0.0, 50.0);
-        assertEquals(-50.0, result.remaining, 0.001);
-        assertEquals(0.0, result.usagePercent, 0.001);
-    }
-
-    // ========== calculateFromHistory 完整链路测试 ==========
-
-    /**
-     * 完整链路示例：
-     * - 7 天窗口，3 条支出：100/200/400（共 700，假设都没异常）
-     * - 日均 = 700 / 7 = 100
-     * - 建议预算 = 100 × 1.0 = 100
-     * - 今日已花 30 → 剩余 70
-     */
-    @Test
-    public void testFromHistory_normalCase() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(100, 0L, false),
-                new ExpenseRecord(200, 0L, false),
-                new ExpenseRecord(400, 0L, false)
-        );
         BudgetResult result = BudgetCalculator.calculateFromHistory(
-                expenses, 7, 1.0, 30.0, true);
-        assertEquals(100.0, result.suggestedBudget, 0.001);
-        assertEquals(30.0, result.todaySpent, 0.001);
-        assertEquals(70.0, result.remaining, 0.001);
-    }
+                empty, 30, 1.0, 0.0, today, false);
 
-    /**
-     * 完整链路：节省模式（倍率 0.8）
-     * - 日均 100 → 建议 80 → 剩余 80 - 30 = 50
-     */
-    @Test
-    public void testFromHistory_saveMode() {
-        List<ExpenseRecord> expenses = Arrays.asList(
-                new ExpenseRecord(700, 0L, false)
-        );
-        BudgetResult result = BudgetCalculator.calculateFromHistory(
-                expenses, 7, 0.8, 30.0, true);
-        assertEquals(80.0, result.suggestedBudget, 0.001);
-        assertEquals(50.0, result.remaining, 0.001);
-    }
-
-    /**
-     * 完整链路：主人最关心的真实场景
-     * - 日均 ¥50（教育基金，过去一周）
-     * - 倍率 1.0
-     * - 今日已花 ¥30
-     * - 剩余 ¥20
-     */
-    @Test
-    public void testFromHistory_realScenario() {
-        List<ExpenseRecord> expenses = new ArrayList<>();
-        // 7 天总支出 350 → 日均 50
-        for (int i = 0; i < 7; i++) {
-            expenses.add(new ExpenseRecord(50.0, 0L, false));
-        }
-        BudgetResult result = BudgetCalculator.calculateFromHistory(
-                expenses, 7, 1.0, 30.0, true);
-        assertEquals(50.0, result.suggestedBudget, 0.001);
-        assertEquals(30.0, result.todaySpent, 0.001);
-        assertEquals(20.0, result.remaining, 0.001);
-        assertEquals(60.0, result.usagePercent, 0.001);
-
-        // 验证主人原话场景
-        assertTrue("剩余应该让主人心里有数", result.remaining >= 0);
-    }
-
-    /**
-     * 完整链路：空数据
-     * - 日均 0 → 建议 0 → 剩余 -已花
-     */
-    @Test
-    public void testFromHistory_emptyData() {
-        BudgetResult result = BudgetCalculator.calculateFromHistory(
-                Collections.emptyList(), 7, 1.0, 30.0, true);
+        assertNotNull(result);
+        assertEquals(BudgetResult.Status.NO_DATA, result.status);
         assertEquals(0.0, result.suggestedBudget, 0.001);
-        assertEquals(-30.0, result.remaining, 0.001);
+        assertEquals(0, result.actualDays);
     }
 
-    // ========== 常量测试 ==========
+    // ============================================================
+    // 2. testCollectingData：actualDays == 0 → COLLECTING_DATA
+    // ============================================================
 
     @Test
-    public void testConstants() {
-        assertEquals(1.0, BudgetCalculator.DEFAULT_RATE, 0.001);
-        assertEquals(7, BudgetCalculator.DEFAULT_WINDOW_SIZE);
+    public void testCollectingData() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today, 50.0)); // 仅今天记了 1 笔
+
+        BudgetResult result = BudgetCalculator.calculateFromHistory(
+                expenses, 30, 1.0, 50.0, today, false);
+
+        assertNotNull(result);
+        assertEquals(BudgetResult.Status.COLLECTING_DATA, result.status);
+        assertEquals(0, result.actualDays);
+        // 积累中状态：suggestedBudget 应为 0
+        assertEquals(0.0, result.suggestedBudget, 0.001);
+    }
+
+    // ============================================================
+    // 3. testColdStart：0 < actualDays < periodDays → 冷启动期
+    // ============================================================
+
+    @Test
+    public void testColdStart() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        // 5 天前开始记，3 天，每天 10 元 → total = 30
+        // actualDays = 5，periodDays = 30 → 冷启动期
+        // 期望日均 = 30 / 5 = 6.0
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today.minusDays(5), 10.0));
+        expenses.add(makeRecord(today.minusDays(3), 10.0));
+        expenses.add(makeRecord(today.minusDays(1), 10.0));
+
+        BudgetResult result = BudgetCalculator.calculateFromHistory(
+                expenses, 30, 1.0, 0.0, today, false);
+
+        assertNotNull(result);
+        assertEquals(BudgetResult.Status.OK, result.status);
+        assertEquals(5, result.actualDays);
+        assertEquals(30, result.periodDays);
+        assertTrue(result.isColdStart);
+        assertEquals(6.0, result.suggestedBudget, 0.001);
+    }
+
+    // ============================================================
+    // 4. testStable：actualDays >= periodDays → 稳定期
+    // ============================================================
+
+    @Test
+    public void testStable() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        // 35 天前开始记，每天 10 元，共 35 笔记账（中间无空缺）
+        // total = 350，actualDays = 35，periodDays = 30 → 稳定期
+        // 期望日均 = 350 / 30 = 11.666...
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        for (int i = 1; i <= 35; i++) {
+            expenses.add(makeRecord(today.minusDays(i), 10.0));
+        }
+
+        BudgetResult result = BudgetCalculator.calculateFromHistory(
+                expenses, 30, 1.0, 0.0, today, false);
+
+        assertNotNull(result);
+        assertEquals(BudgetResult.Status.OK, result.status);
+        assertEquals(35, result.actualDays);
+        assertEquals(30, result.periodDays);
+        assertTrue(!result.isColdStart);
+        assertEquals(350.0 / 30.0, result.suggestedBudget, 0.001);
+    }
+
+    // ============================================================
+    // 5. testTodayNotIncluded：今天的支出不计入分母
+    // ============================================================
+
+    @Test
+    public void testTodayNotIncluded() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        // 3 天前开始记，每天 10 元，今天也记了一笔 100 元（异常大）
+        // 期望：today 这 100 元仍计入分子（total），但 today 不计入分母
+        // actualDays = 3，periodDays = 30 → 冷启动期
+        // total = 10*3 + 100 = 130
+        // 日均 = 130 / 3 ≈ 43.333...
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today.minusDays(3), 10.0));
+        expenses.add(makeRecord(today.minusDays(2), 10.0));
+        expenses.add(makeRecord(today.minusDays(1), 10.0));
+        expenses.add(makeRecord(today, 100.0));
+
+        BudgetResult result = BudgetCalculator.calculateFromHistory(
+                expenses, 30, 1.0, 100.0, today, false);
+
+        assertNotNull(result);
+        assertEquals(BudgetResult.Status.OK, result.status);
+        // 分母是 3（不含今天）
+        assertEquals(3, result.actualDays);
+        // 日均 = 130 / 3 ≈ 43.333
+        assertEquals(130.0 / 3.0, result.suggestedBudget, 0.001);
+        // remaining = 43.333 - 100（今天已花）= -56.666
+        assertEquals(130.0 / 3.0 - 100.0, result.remaining, 0.001);
+    }
+
+    // ============================================================
+    // 6. testMidGapIncluded：中间无流水日计入分母
+    // ============================================================
+
+    @Test
+    public void testMidGapIncluded() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        // 5 天前记了 1 笔，3 天前记了 1 笔（中间 4 天、2 天没流水）
+        // 主人原话：中间无流水日计入分母
+        // actualDays = 5（第一笔记账日 = today-5）
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today.minusDays(5), 20.0));
+        expenses.add(makeRecord(today.minusDays(3), 30.0));
+
+        BudgetResult result = BudgetCalculator.calculateFromHistory(
+                expenses, 30, 1.0, 0.0, today, false);
+
+        assertNotNull(result);
+        assertEquals(BudgetResult.Status.OK, result.status);
+        // 分母按"第一笔记账日 → 今天"算，不是按流水数
+        assertEquals(5, result.actualDays);
+        // total = 50，日均 = 50 / 5 = 10
+        assertEquals(10.0, result.suggestedBudget, 0.001);
+    }
+
+    // ============================================================
+    // 7. 额外测试：异常支出排除（excludeAnomaly=true）
+    // ============================================================
+
+    @Test
+    public void testExcludeAnomaly() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today.minusDays(5), 10.0, false));
+        expenses.add(makeRecord(today.minusDays(3), 10.0, false));
+        expenses.add(makeRecord(today.minusDays(1), 500.0, true)); // 异常支出
+
+        BudgetResult result = BudgetCalculator.calculateFromHistory(
+                expenses, 30, 1.0, 0.0, today, true);
+
+        assertNotNull(result);
+        assertEquals(BudgetResult.Status.OK, result.status);
+        // total 应排除异常 = 20，不是 520
+        assertEquals(20.0 / 5.0, result.suggestedBudget, 0.001);
+    }
+
+    // ============================================================
+    // 8. 额外测试：倍率生效（rate = 1.5）
+    // ============================================================
+
+    @Test
+    public void testRateMultiplier() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today.minusDays(5), 10.0));
+        expenses.add(makeRecord(today.minusDays(3), 10.0));
+        expenses.add(makeRecord(today.minusDays(1), 10.0));
+
+        BudgetResult result = BudgetCalculator.calculateFromHistory(
+                expenses, 30, 1.5, 0.0, today, false);
+
+        assertNotNull(result);
+        // 日均 = 30 / 5 = 6，倍率 1.5 → 9
+        assertEquals(9.0, result.suggestedBudget, 0.001);
+    }
+
+    // ============================================================
+    // 9. 额外测试：参数校验（periodDays <= 0 抛异常）
+    // ============================================================
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testInvalidPeriodDays() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today.minusDays(1), 10.0));
+
+        BudgetCalculator.calculateFromHistory(
+                expenses, 0, 1.0, 0.0, today, false);
+    }
+
+    // ============================================================
+    // 10. 额外测试：参数校验（rate <= 0 抛异常）
+    // ============================================================
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testInvalidRate() {
+        LocalDate today = LocalDate.of(2026, 8, 8);
+        List<ExpenseRecord> expenses = new ArrayList<>();
+        expenses.add(makeRecord(today.minusDays(1), 10.0));
+
+        BudgetCalculator.calculateFromHistory(
+                expenses, 30, 0.0, 0.0, today, false);
     }
 }

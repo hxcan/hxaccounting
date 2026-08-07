@@ -30,7 +30,7 @@ class ExpenseRecord {
 }
 
 /**
- * 预算计算器（自适应窗口算法 v2）
+ * 预算计算器（自适应窗口算法 v2.1）
  *
  * <p>负责根据历史支出计算预算，支持 3 个状态：
  * <ul>
@@ -39,32 +39,40 @@ class ExpenseRecord {
  *   <li>OK：正常状态，按自适应窗口计算</li>
  * </ul>
  *
- * <p><b>核心算法（自适应窗口 v2）</b>：
+ * <p><b>核心算法（自适应窗口 v2.1）</b>：
  * <pre>
- *   actualDays = 第一笔记账日 → 今天（不含今天）的天数
+ *   actualDays = 第一笔记账日 → 昨天（不含今天）的天数
+ *   total      = 历史支出总和（不含今天的流水）
  *   if actualDays == 0:
  *       return COLLECTING_DATA
  *   elif actualDays < periodDays:
- *       dailyAvg = 总支出 / actualDays    // 冷启动期
+ *       dailyAvg = total / actualDays    // 冷启动期
  *   else:
- *       dailyAvg = 总支出 / periodDays    // 稳定期
+ *       dailyAvg = total / periodDays    // 稳定期
  *   suggested = dailyAvg * rate
+ *   remaining = suggested - todaySpent   // 今日已花单独算
  * </pre>
  *
- * <p>关键设计点：
+ * <p><b>v2.1 关键修复（2026-08-08 主人验收反馈）</b>：
  * <ul>
- *   <li>✅ "今天"不计入分母（避免自己创造日均）</li>
- *   <li>✅ 中间无流水日计入分母（按主人原话）</li>
- *   <li>✅ 仅 1 天数据时显示"数据积累中"而不是乱算</li>
- *   <li>✅ 满周期后切回正常计算</li>
+ *   <li>✅ "今天"既不计入分子也不计入分母</li>
+ *   <li>✅ 分子：窗口期内的支出（严格按"昨天为止"过滤）</li>
+ *   <li>✅ 分母：第一笔记账日 → 昨天（不含今天）的天数</li>
+ *   <li>✅ 今日已花（todaySpent）单独用于算 remaining</li>
+ *   <li>✅ 避免"分子含今天 + 分母不含今天"造成的日均放大 bug</li>
  * </ul>
  *
- * <p>这是太极记账相对其他 App 的核心优势：
- * 帮主人实时控制预算，主人在花下一笔钱时会"心里有数"。
+ * <p><b>主人原话（2026-08-08）</b>：
+ * "今天正是此刻正在发生的事情，就是我们能够通过控制来缩减开支或者保持开支
+ *  或者说扩大开支的手段。"
+ *
+ * <p>理解：今天的预算不是历史算出来的——而是通过历史日均**指导**主人今天该花多少。
+ * 今天的实际支出由主人实时控制。所以"今天"完全不应该参与"建议预算"的计算公式。
+ * 它只参与"剩余预算 = 建议预算 - 今日已花"这一步。
  *
  * @author 未来姐姐
  * @since 2026-08-06
- * @updated 2026-08-08 自适应窗口算法 v2
+ * @updated 2026-08-08 自适应窗口算法 v2.1（今天完全不算）
  */
 public class BudgetCalculator {
 
@@ -84,22 +92,24 @@ public class BudgetCalculator {
     private static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
 
     /**
-     * 一站式：从历史支出直接算出今日剩余预算（自适应窗口算法 v2）
+     * 一站式：从历史支出直接算出今日剩余预算（自适应窗口算法 v2.1）
      *
      * <p>算法步骤：
      * <ol>
      *   <li>如果流水为空 → NO_DATA</li>
-     *   <li>计算 actualDays（第一笔记账日 → 今天，不含今天）</li>
+     *   <li>过滤出"今天以前"的支出（严格剔除今天的流水）</li>
+     *   <li>如果过滤后为空 → COLLECTING_DATA（今天才刚开始记账）</li>
+     *   <li>计算 actualDays（第一笔记账日 → 昨天，不含今天）</li>
      *   <li>如果 actualDays == 0 → COLLECTING_DATA</li>
      *   <li>根据 actualDays 和 periodDays 决定用哪个窗口</li>
-     *   <li>计算日均 × 倍率 = 建议预算</li>
-     *   <li>计算今日已花 → 剩余预算</li>
+     *   <li>计算日均 × 倍率 = 建议预算（基于历史，不含今天）</li>
+     *   <li>计算 remaining = suggested - todaySpent（今天单独算）</li>
      * </ol>
      *
-     * @param expenses   历史支出记录（全部，不限时间）
+     * @param expenses   历史支出记录（全部，含今天的——会在内部过滤掉）
      * @param periodDays 周期（天），主人可在设置里调整
      * @param rate       倍率（> 0）
-     * @param todaySpent 今日已花（元）
+     * @param todaySpent 今日已花（元）——只用于算 remaining，不参与日均
      * @param today      基准日期（通常 = LocalDate.now()，但允许测试时注入）
      * @param excludeAnomaly 是否排除异常支出
      * @return BudgetResult（含 status、suggested、remaining 等）
@@ -124,14 +134,22 @@ public class BudgetCalculator {
             return BudgetResult.noData(today);
         }
 
-        // 2. 过滤有效支出
+        // 2. 过滤有效支出 + v2.1 修复：剔除今天的流水
+        //    "今天"是主人实时控制的变量，不应该污染历史日均
+        final LocalDate todayFinal = today;
         List<ExpenseRecord> validExpenses = expenses.stream()
                 .filter(r -> r != null && r.amount > 0)
                 .filter(r -> !excludeAnomaly || !r.isAnomaly)
+                .filter(r -> {
+                    LocalDate recordDate = Instant.ofEpochMilli(r.timestamp)
+                            .atZone(SYSTEM_ZONE).toLocalDate();
+                    return recordDate.isBefore(todayFinal); // 严格小于今天
+                })
                 .collect(Collectors.toList());
 
         if (validExpenses.isEmpty()) {
-            return BudgetResult.noData(today);
+            // 今天才刚开始记账，没有历史数据 → 数据积累中
+            return BudgetResult.collectingData(today);
         }
 
         // 3. 获取第一笔记账日期
@@ -140,16 +158,18 @@ public class BudgetCalculator {
                 .min(LocalDate::compareTo)
                 .orElseThrow();
 
-        // 4. 计算已过去的天数（不含今天）
-        // ChronoUnit.DAYS.between(a, b) = b - a，但不包含 b
+        // 4. 计算已过去的天数（不含今天，因为今天的数据已全部被过滤掉）
+        //    ChronoUnit.DAYS.between(a, b) = b - a，但不包含 b
+        //    现在 lastDate < today，所以 between(firstDate, today) 给出正确的不含今天的天数
         int actualDays = (int) ChronoUnit.DAYS.between(firstDate, today);
 
         // 5. 仅今天记了 1 笔（actualDays == 0）→ 数据积累中
+        //    防御性检查：万一过滤后还有 lastDate == today 的边角情况
         if (actualDays == 0) {
             return BudgetResult.collectingData(today);
         }
 
-        // 6. 计算总支出
+        // 6. 计算总支出（不含今天）
         double total = validExpenses.stream()
                 .mapToDouble(r -> r.amount)
                 .sum();
@@ -162,7 +182,7 @@ public class BudgetCalculator {
             dailyAvg = total / periodDays;
         }
 
-        // 8. 建议预算 = 日均 × 倍率
+        // 8. 建议预算 = 日均 × 倍率（基于历史，今天不参与）
         double suggestedBudget = dailyAvg * rate;
 
         return BudgetResult.ok(suggestedBudget, todaySpent, actualDays, periodDays, today);

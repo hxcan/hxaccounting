@@ -1,102 +1,117 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- v1.0.0 正式版：首次对外发布的字符串资源 -->
 <resources>
-    <!-- 应用名称 -->
     <string name="app_name">太极记账</string>
 
-    <!-- 通用 -->
-    <string name="ok">确定</string>
-    <string name="cancel">取消</string>
-    <string name="save">保存</string>
-    <string name="delete">删除</string>
-    <string name="edit">编辑</string>
-    <string name="back">返回</string>
-    <string name="loading">加载中...</string>
-    <string name="empty">暂无数据</string>
+    <!-- 主页面 -->
+    <string name="title_main">太极记账</string>
+    <string name="fab_add">记一笔</string>
 
-    <!-- 账本相关 -->
-    <string name="title_accounts">账本管理</string>
-    <string name="title_current_account">当前账本</string>
-    <string name="action_switch_account">切换账本</string>
-    <string name="action_manage_accounts">管理账本</string>
-    <string name="hint_account_name">账本名称</string>
-    <string name="hint_account_type">账本类型</string>
+    <!-- 账本管理 -->
+    <string name="title_accounts">账本</string>
+    <string name="btn_manage_accounts">管理账本</string>
+    <string name="empty_accounts">还没有账本\n点 + 创建第一个账本</string>
+    <string name="action_create_account">新建账本</string>
+    <string name="action_edit_account">编辑账本</string>
+    <string name="action_delete_account">删除账本</string>
+    <string name="action_set_current">设为当前</string>
+    <string name="hint_account_name">账本名称（如：教育基金）</string>
+    <string name="label_account_name">账本名称</string>
+    <string name="label_account_type">账本类型</string>
+    <string name="label_account_color">账本颜色</string>
+    <string name="dialog_create_account_title">新建账本</string>
+    <string name="dialog_edit_account_title">编辑账本</string>
+    <string name="dialog_delete_account_title">删除账本？</string>
+    <string name="dialog_delete_account_message">账本下的所有流水也会被删除，无法恢复。\n\n确定要删除 \"%1$s\" 吗？</string>
+    <string name="error_account_name_empty">请输入账本名称</string>
+    <string name="error_account_name_exists">账本名称已存在</string>
     <string name="msg_account_created">账本创建成功</string>
-    <string name="msg_account_updated">账本更新成功</string>
-    <string name="msg_account_deleted">账本删除成功</string>
-    <string name="msg_account_switched">已切换到账本：%1$s</string>
-    <string name="msg_no_accounts">还没有账本，请先创建一个</string>
-    <string name="msg_account_name_exists">账本名称已存在</string>
+    <string name="msg_account_updated">账本已更新</string>
+    <string name="msg_account_deleted">账本已删除</string>
+    <string name="msg_account_set_current">已设为当前账本</string>
+    <string name="badge_current">当前</string>
 
-    <!-- 账本类型 -->
-    <string name="account_type_personal">个人</string>
-    <string name="account_type_family">家庭</string>
-    <string name="account_type_business">生意</string>
-    <string name="account_type_other">其他</string>
-
-    <!-- 流水相关 -->
-    <string name="title_quick_add">快速记账</string>
-    <string name="title_transactions">流水列表</string>
-    <string name="hint_amount">金额</string>
-    <string name="hint_note">备注（可选）</string>
-    <string name="action_save_transaction">保存</string>
-    <string name="msg_transaction_saved">记账成功</string>
+    <!-- 快速记账页面 -->
+    <string name="title_quick_add">记一笔</string>
+    <string name="hint_amount">0.00</string>
     <string name="label_amount">金额</string>
-    <string name="label_type">类型</string>
+    <string name="type_expense">支出</string>
+    <string name="type_income">收入</string>
     <string name="label_category">分类</string>
+    <string name="label_subcategory">子分类（可选）</string>
+    <string name="label_description">备注（可选）</string>
     <string name="label_payment_method">支付方式</string>
-    <string name="label_note">备注</string>
-    <string name="label_anomaly">异常支出</string>
-    <string name="label_select_category">请选择分类</string>
+    <string name="label_recipient">收款人 / 商家</string>
+    <string name="label_anomaly">异常支出（不计入日均）</string>
+    <string name="btn_save">保存</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_select_category">请选择分类</string>
+    <string name="error_amount_required">请输入金额</string>
+    <string name="error_amount_invalid">金额必须大于 0</string>
+    <string name="error_category_required">请选择分类</string>
+    <string name="error_no_account">请先创建一个账本</string>
+    <string name="msg_save_success">记账成功</string>
 
-    <!-- 流水类型 -->
-    <string name="transaction_type_expense">支出</string>
-    <string name="transaction_type_income">收入</string>
-    <string name="transaction_type_transfer">转账</string>
+    <!-- 流水列表（B5） -->
+    <string name="section_today">今天</string>
+    <string name="section_yesterday">昨天</string>
+    <string name="section_this_week">本周更早</string>
+    <string name="section_earlier">更早</string>
+    <string name="empty_transactions">还没有流水\n点右下角 + 记第一笔</string>
+    <string name="msg_no_current_account_for_list">请先选择账本</string>
+    <string name="action_edit_transaction">编辑</string>
+    <string name="action_delete_transaction">删除</string>
+    <string name="dialog_delete_transaction_title">删除这笔流水？</string>
+    <string name="msg_transaction_deleted">流水已删除</string>
 
     <!-- 支付方式 -->
-    <string name="payment_method_cash">现金</string>
-    <string name="payment_method_wechat">微信</string>
-    <string name="payment_method_alipay">支付宝</string>
-    <string name="payment_method_card">银行卡</string>
-    <string name="payment_method_other">其他</string>
+    <string name="pay_cash">现金</string>
+    <string name="pay_wechat">微信</string>
+    <string name="pay_alipay">支付宝</string>
+    <string name="pay_bank_card">银行卡</string>
+    <string name="pay_credit_card">信用卡</string>
+    <string name="pay_other">其他</string>
 
-    <!-- 异常支出 -->
-    <string name="anomaly_hint">异常支出（如红包、临时大额）不计入日均预算计算</string>
+    <!-- 分类名称（与预置数据对应） -->
+    <string name="cat_food">餐饮</string>
+    <string name="cat_food_breakfast">早餐</string>
+    <string name="cat_food_lunch">午餐</string>
+    <string name="cat_food_dinner">晚餐</string>
+    <string name="cat_food_takeout">外卖</string>
+    <string name="cat_food_tea">奶茶</string>
 
-    <!-- 首页汇总 -->
-    <string name="label_today">今日</string>
-    <string name="label_this_week">本周</string>
-    <string name="label_this_month">本月</string>
-    <string name="label_monthly_income">本月收入</string>
+    <string name="cat_transport">交通</string>
+    <string name="cat_transport_bus">公交地铁</string>
+    <string name="cat_transport_taxi">打车</string>
+    <string name="cat_transport_fuel">加油</string>
 
-    <!-- 预算设置 -->
+    <string name="cat_shopping">购物</string>
+    <string name="cat_shopping_daily">日用</string>
+    <string name="cat_shopping_clothing">服饰</string>
+
+    <string name="cat_home">居家</string>
+    <string name="cat_home_rent">房租</string>
+    <string name="cat_home_utility">水电煤</string>
+
+    <string name="cat_entertainment">娱乐</string>
+    <string name="cat_medical">医疗</string>
+    <string name="cat_education">教育</string>
+    <string name="cat_parenting">育儿</string>
+    <string name="cat_income">收入</string>
+    <string name="cat_other">其他</string>
+
+    <!-- v2 预算设置页面 -->
     <string name="title_budget_settings">预算设置</string>
     <string name="label_period_days">预算周期</string>
-    <string name="label_period_days_hint">选择预算计算的时间窗口（天）</string>
+    <string name="label_period_days_hint">按最近多少天的流水计算日均预算</string>
     <string name="period_7_days">7 天</string>
     <string name="period_30_days">30 天（推荐）</string>
     <string name="period_90_days">90 天</string>
     <string name="period_custom">自定义</string>
-    <string name="dialog_period_custom_title">自定义周期</string>
-    <string name="hint_custom_period">请输入 7-365 之间的天数</string>
-    <string name="error_period_invalid">请输入 7-365 之间的有效数字</string>
+    <string name="dialog_period_custom_title">自定义周期（天）</string>
+    <string name="hint_custom_period">请输入周期天数（7-365）</string>
+    <string name="error_period_invalid">周期必须在 7-365 之间</string>
     <string name="msg_settings_saved">设置已保存</string>
 
-    <!-- 预算卡片 -->
-    <string name="title_today_budget">今日预算</string>
-    <string name="label_window_label">%1$d 天 × %2$.1f</string>
-    <string name="label_suggested">建议预算</string>
-    <string name="label_spent">已花</string>
-    <string name="label_remaining">剩余</string>
-    <string name="label_usage_percent">已用 %1$d%%</string>
-    <string name="label_adjust_rate">调整倍率</string>
-
-    <!-- 状态提示 -->
-    <string name="status_collecting_data">⏳ 数据积累中</string>
-    <string name="status_cold_start_hint">💡 正在用实际记账天数计算</string>
-
-    <!-- v1.0.0 新增 -->
+    <!-- v1.0.0 新增 欢迎语 -->
     <string name="welcome_title">欢迎使用太极记账 v1.0.0</string>
     <string name="welcome_message">自适应预算，量入为出</string>
 </resources>

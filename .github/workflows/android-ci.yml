@@ -46,7 +46,8 @@ jobs:
       run: ./gradlew test
 
     - name: Decode release keystore from secret
-      if: ${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 != '' }}
+      id: decode-keystore
+      if: ${{ env.HAS_KEYSTORE == 'true' }}
       run: |
         echo "${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 }}" | base64 -d > app/release.keystore
 
@@ -54,7 +55,7 @@ jobs:
       run: ./gradlew assembleDebug
 
     - name: Build release APK
-      if: ${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 != '' }}
+      if: ${{ env.HAS_KEYSTORE == 'true' }}
       env:
         KEYSTORE_FILE: app/release.keystore
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -70,7 +71,7 @@ jobs:
         retention-days: 7
 
     - name: Upload release APK
-      if: ${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 != '' }}
+      if: ${{ env.HAS_KEYSTORE == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: app-release

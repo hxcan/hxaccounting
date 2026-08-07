@@ -42,6 +42,10 @@ android {
     }
 
     compileOptions {
+        // v2 修复：启用核心库 desugaring，让 java.time.* (LocalDate / ZoneId / Instant / ChronoUnit)
+        // 能在 minSdk 24 (Android 7.0) 上运行，否则 lint 会报 NewApi。
+        // Android 官方推荐方案：https://developer.android.com/studio/write/java8-support
+        coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
@@ -67,6 +71,9 @@ dependencies {
 
     // Crash monitoring - sisterfuture CrashDetector (task #859222728113)
     implementation 'com.github.hxcan:android-crash-detector:2026.4.8'
+
+    // v2 修复：Java 8+ API desugaring 库（提供 java.time.* 等在低版本 Android 上的实现）
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

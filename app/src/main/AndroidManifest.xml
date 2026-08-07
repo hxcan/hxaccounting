@@ -28,6 +28,12 @@
             android:exported="false"
             android:label="@string/title_accounts"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.BudgetSettingsActivity"
+            android:exported="false"
+            android:label="@string/title_budget_settings"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 
 </manifest>

@@ -28,16 +28,14 @@ import java.util.regex.Pattern;
  *
  * @author 未来姐姐
  * @since 2026-08-06
- * @updated 2026-08-08 LOG_DIR 改为 lazy init 修复单元测试 CI 失败（任务 #861693812595）
+ * @updated 2026-08-08 LOG_DIR lazy init + writeToFile 兜底所有异常（任务 #861693812595）
  */
 public class FileLogger {
     private static final String TAG = "FileLogger";
 
-    // v2 修复：去掉 final，改用 lazy init（任务 #861693812595）
-    // 原版 LOG_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + ...
-    // 会在类加载时执行 Environment.getExternalStorageDirectory()，导致 JVM 单元测试环境
-    // 抛 RuntimeException，触发 ExceptionInInitializerError，所有 BudgetCalculatorTest 测试失败。
-    // 改为 lazy 后：类加载时不执行 Android API，首次使用 getLogDir() 时才初始化。
+    // v2 修复（任务 #861693812595）：去掉 final，改用 lazy init
+    // 原版 static final 字段会在类加载时执行 Environment.getExternalStorageDirectory()，
+    // JVM 单元测试环境下抛 RuntimeException，导致 ExceptionInInitializerError。
     private static String LOG_DIR = null;
 
     // 单文件最大大小：10MB
@@ -110,8 +108,13 @@ public class FileLogger {
      * 调试日志
      */
     public static void d(String tag, String message) {
-        if (currentLevel <= LEVEL_DEBUG) {
-            writeToFile("DEBUG", tag, message);
+        try {
+            if (currentLevel <= LEVEL_DEBUG) {
+                writeToFile("DEBUG", tag, message);
+            }
+        } catch (Throwable t) {
+            // v2 修复（任务 #861693812595）：捕获所有异常，避免日志失败影响业务逻辑
+            Log.e(TAG, "d() 失败", t);
         }
     }
 
@@ -119,8 +122,12 @@ public class FileLogger {
      * 普通信息
      */
     public static void i(String tag, String message) {
-        if (currentLevel <= LEVEL_INFO) {
-            writeToFile("INFO", tag, message);
+        try {
+            if (currentLevel <= LEVEL_INFO) {
+                writeToFile("INFO", tag, message);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "i() 失败", t);
         }
     }
 
@@ -128,8 +135,12 @@ public class FileLogger {
      * 警告
      */
     public static void w(String tag, String message) {
-        if (currentLevel <= LEVEL_WARN) {
-            writeToFile("WARN", tag, message);
+        try {
+            if (currentLevel <= LEVEL_WARN) {
+                writeToFile("WARN", tag, message);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "w() 失败", t);
         }
     }
 
@@ -137,8 +148,12 @@ public class FileLogger {
      * 错误
      */
     public static void e(String tag, String message) {
-        if (currentLevel <= LEVEL_ERROR) {
-            writeToFile("ERROR", tag, message);
+        try {
+            if (currentLevel <= LEVEL_ERROR) {
+                writeToFile("ERROR", tag, message);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "e() 失败", t);
         }
     }
 
@@ -167,8 +182,9 @@ public class FileLogger {
             writer.close();
 
             currentFileSize += logLine.getBytes().length;
-        } catch (IOException e) {
-            Log.e(TAG, "写入日志文件失败", e);
+        } catch (Throwable t) {
+            // v2 修复（任务 #861693812595）：捕获所有异常
+            Log.e(TAG, "写入日志文件失败", t);
         }
     }
 
@@ -188,8 +204,8 @@ public class FileLogger {
                 currentFileSize = 0;
                 currentLogFile.createNewFile();
             }
-        } catch (IOException e) {
-            Log.e(TAG, "创建日志文件失败", e);
+        } catch (Throwable t) {
+            Log.e(TAG, "创建日志文件失败", t);
             currentLogFile = null;
             currentFileSize = 0;
         }

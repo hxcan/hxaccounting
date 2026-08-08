@@ -53,8 +53,10 @@ jobs:
 
     - name: Decode release keystore from secret
       if: ${{ env.HAS_KEYSTORE == 'true' && github.event_name != 'pull_request' }}
+      # Decode to repository root (not app/) so that build.gradle's ${rootDir}/release.keystore works
       run: |
-        echo "${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 }}" | base64 -d > app/release.keystore
+        echo "${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 }}" | base64 -d > release.keystore
+        ls -la release.keystore
 
     - name: Build debug APK
       run: ./gradlew assembleDebug
@@ -62,9 +64,9 @@ jobs:
     - name: Build release APK
       if: ${{ env.HAS_KEYSTORE == 'true' && github.event_name != 'pull_request' }}
       env:
-        KEYSTORE_FILE: app/release.keystore
+        KEYSTORE_FILE: ${{ github.workspace }}/release.keystore
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        KEY_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         ALIAS_PASSWORD: ${{ secrets.ALIAS_PASSWORD }}
       run: ./gradlew assembleRelease
 

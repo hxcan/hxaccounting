@@ -23,7 +23,7 @@ android {
             if (keystorePropsFile.exists()) {
                 keystoreProps.load(new FileInputStream(keystorePropsFile))
             }
-            storeFile file(System.getenv('KEYSTORE_FILE') ?: keystoreProps.getProperty('storeFile', 'release.keystore'))
+            storeFile file(System.getenv('KEYSTORE_FILE') ?: keystoreProps.getProperty('storeFile', "${rootDir}/release.keystore"))
             storePassword System.getenv('KEYSTORE_PASSWORD') ?: keystoreProps.getProperty('storePassword', '')
             keyAlias System.getenv('KEY_ALIAS') ?: keystoreProps.getProperty('keyAlias', '')
             keyPassword System.getenv('ALIAS_PASSWORD') ?: keystoreProps.getProperty('keyPassword', '')

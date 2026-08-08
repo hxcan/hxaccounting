@@ -1,5 +1,7 @@
 package com.stupidbeauty.hxaccounting.budget;
 
+import com.stupidbeauty.hxaccounting.utils.FileLogger;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -73,8 +75,11 @@ class ExpenseRecord {
  * @author 未来姐姐
  * @since 2026-08-06
  * @updated 2026-08-08 自适应窗口算法 v2.1（今天完全不算）
+ * @updated 2026-08-08 v2 调试日志：关键分支加 FileLogger 输出（任务 #861693812595）
  */
 public class BudgetCalculator {
+
+    private static final String TAG = "BudgetCalculator";
 
     /**
      * 默认倍率（1.0 = 等于日均）
@@ -129,8 +134,15 @@ public class BudgetCalculator {
             throw new IllegalArgumentException("rate must be > 0, got: " + rate);
         }
 
+        // v2 调试：入口参数日志（任务 #861693812595 - 排查空状态显示问题）
+        FileLogger.i(TAG, "calculateFromHistory 入口: expenses.size=" + (expenses == null ? 0 : expenses.size())
+                + ", periodDays=" + periodDays + ", rate=" + rate
+                + ", todaySpent=" + todaySpent + ", today=" + today
+                + ", excludeAnomaly=" + excludeAnomaly);
+
         // 1. 空数据检查
         if (expenses == null || expenses.isEmpty()) {
+            FileLogger.w(TAG, "calculateFromHistory: 原始 expenses 为空，返回 NO_DATA");
             return BudgetResult.noData(today);
         }
 
@@ -148,7 +160,9 @@ public class BudgetCalculator {
                 .collect(Collectors.toList());
 
         if (validExpenses.isEmpty()) {
-            // 今天才刚开始记账，没有历史数据 → 数据积累中
+            // v2 调试：所有流水都在今天（今天才刚开始记账）
+            FileLogger.w(TAG, "calculateFromHistory: 过滤今天后 validExpenses 为空，返回 COLLECTING_DATA"
+                    + " (原始 expenses.size=" + expenses.size() + ")");
             return BudgetResult.collectingData(today);
         }
 
@@ -163,9 +177,16 @@ public class BudgetCalculator {
         //    现在 lastDate < today，所以 between(firstDate, today) 给出正确的不含今天的天数
         int actualDays = (int) ChronoUnit.DAYS.between(firstDate, today);
 
+        // v2 调试：第一笔记账日和实际天数
+        FileLogger.d(TAG, "calculateFromHistory: firstDate=" + firstDate
+                + ", today=" + today + ", actualDays=" + actualDays
+                + ", validExpenses.size=" + validExpenses.size());
+
         // 5. 仅今天记了 1 笔（actualDays == 0）→ 数据积累中
         //    防御性检查：万一过滤后还有 lastDate == today 的边角情况
         if (actualDays == 0) {
+            FileLogger.w(TAG, "calculateFromHistory: actualDays==0，返回 COLLECTING_DATA"
+                    + " (firstDate=" + firstDate + ", today=" + today + ")");
             return BudgetResult.collectingData(today);
         }
 
@@ -184,6 +205,13 @@ public class BudgetCalculator {
 
         // 8. 建议预算 = 日均 × 倍率（基于历史，今天不参与）
         double suggestedBudget = dailyAvg * rate;
+
+        // v2 调试：OK 分支输出关键计算结果
+        FileLogger.i(TAG, String.format(java.util.Locale.US,
+                "calculateFromHistory: OK 分支 total=%.2f, dailyAvg=%.2f, suggested=%.2f"
+                        + " (actualDays=%d, periodDays=%d, isColdStart=%s)",
+                total, dailyAvg, suggestedBudget, actualDays, periodDays,
+                actualDays < periodDays));
 
         return BudgetResult.ok(suggestedBudget, todaySpent, actualDays, periodDays, today);
     }

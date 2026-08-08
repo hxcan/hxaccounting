@@ -28,27 +28,17 @@ import java.util.regex.Pattern;
  *
  * @author 未来姐姐
  * @since 2026-08-06
- * @updated 2026-08-08 LOG_DIR 改为 lazy 初始化（修复单元测试 CI 失败 #861693812595）
+ * @updated 2026-08-08 LOG_DIR 改为 lazy init 修复单元测试 CI 失败（任务 #861693812595）
  */
 public class FileLogger {
     private static final String TAG = "FileLogger";
 
-    /**
-     * 日志文件路径：/sdcard/Download/hxaccounting_logs/
-     *
-     * <p>v2 修复：改为 lazy 初始化，避免单元测试环境（JVM）下类加载时
-     * 触发 Environment.getExternalStorageDirectory() 调用抛 RuntimeException。
-     *
-     * <p>Android 运行时：第一次调用 getLogDir() 时正常初始化。
-     * 单元测试环境：不会主动调用 getLogDir()，避免 Android API 调用。
-     */
+    // v2 修复：去掉 final，改用 lazy init（任务 #861693812595）
+    // 原版 LOG_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + ...
+    // 会在类加载时执行 Environment.getExternalStorageDirectory()，导致 JVM 单元测试环境
+    // 抛 RuntimeException，触发 ExceptionInInitializerError，所有 BudgetCalculatorTest 测试失败。
+    // 改为 lazy 后：类加载时不执行 Android API，首次使用 getLogDir() 时才初始化。
     private static String LOG_DIR = null;
-    private static String getLogDir() {
-        if (LOG_DIR == null) {
-            LOG_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download/hxaccounting_logs/";
-        }
-        return LOG_DIR;
-    }
 
     // 单文件最大大小：10MB
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -71,6 +61,17 @@ public class FileLogger {
 
     // 敏感信息过滤正则
     private static final Pattern API_KEY_PATTERN = Pattern.compile("(api[_-]?key|token|secret|password)[\"']?\\s*[:=]\\s*[\"']?[\\w-]+", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * v2 修复（任务 #861693812595）：lazy 初始化 LOG_DIR
+     * 避免类加载时调用 Environment.getExternalStorageDirectory() 导致单元测试失败
+     */
+    private static String getLogDir() {
+        if (LOG_DIR == null) {
+            LOG_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download/hxaccounting_logs/";
+        }
+        return LOG_DIR;
+    }
 
     /**
      * 初始化日志系统

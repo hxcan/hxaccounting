@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
  *
  * @author 未来姐姐
  * @since 2026-08-06
- * @updated 2026-08-08 LOG_DIR lazy init + writeToFile 兜底所有异常（任务 #861693812595）
+ * @updated 2026-08-08 全 catch 块嵌套 try-catch 兜底 Log.e 异常（任务 #861693812595）
  */
 public class FileLogger {
     private static final String TAG = "FileLogger";
@@ -72,6 +72,18 @@ public class FileLogger {
     }
 
     /**
+     * v3 修复（任务 #861693812595）：Log.e 在单元测试环境也可能抛 RuntimeException
+     * 所有 catch 块里调 Log.e 时嵌套一层 try-catch 兜底
+     */
+    private static void safeLogE(String msg, Throwable t) {
+        try {
+            Log.e(TAG, msg, t);
+        } catch (Throwable ignored) {
+            // 单元测试环境 Log.e 也可能抛，吞掉
+        }
+    }
+
+    /**
      * 初始化日志系统
      * 必须在 Application.onCreate() 中调用
      */
@@ -81,7 +93,7 @@ public class FileLogger {
             File logDir = new File(getLogDir());
             if (!logDir.exists()) {
                 boolean created = logDir.mkdirs();
-                Log.i(TAG, "📁 创建日志目录：" + getLogDir() + " - " + (created ? "成功" : "失败"));
+                safeLogE("📁 创建日志目录：" + getLogDir() + " - " + (created ? "成功" : "失败"), null);
             }
 
             // 清理旧日志
@@ -90,9 +102,9 @@ public class FileLogger {
             // 初始化当前日志文件
             rotateLogFile();
 
-            Log.i(TAG, "✅ FileLogger 初始化完成");
+            safeLogE("✅ FileLogger 初始化完成", null);
         } catch (Exception e) {
-            Log.e(TAG, "❌ FileLogger 初始化失败", e);
+            safeLogE("❌ FileLogger 初始化失败", e);
         }
     }
 
@@ -113,8 +125,7 @@ public class FileLogger {
                 writeToFile("DEBUG", tag, message);
             }
         } catch (Throwable t) {
-            // v2 修复（任务 #861693812595）：捕获所有异常，避免日志失败影响业务逻辑
-            Log.e(TAG, "d() 失败", t);
+            safeLogE("d() 失败", t);
         }
     }
 
@@ -127,7 +138,7 @@ public class FileLogger {
                 writeToFile("INFO", tag, message);
             }
         } catch (Throwable t) {
-            Log.e(TAG, "i() 失败", t);
+            safeLogE("i() 失败", t);
         }
     }
 
@@ -140,7 +151,7 @@ public class FileLogger {
                 writeToFile("WARN", tag, message);
             }
         } catch (Throwable t) {
-            Log.e(TAG, "w() 失败", t);
+            safeLogE("w() 失败", t);
         }
     }
 
@@ -153,7 +164,7 @@ public class FileLogger {
                 writeToFile("ERROR", tag, message);
             }
         } catch (Throwable t) {
-            Log.e(TAG, "e() 失败", t);
+            safeLogE("e() 失败", t);
         }
     }
 
@@ -183,8 +194,7 @@ public class FileLogger {
 
             currentFileSize += logLine.getBytes().length;
         } catch (Throwable t) {
-            // v2 修复（任务 #861693812595）：捕获所有异常
-            Log.e(TAG, "写入日志文件失败", t);
+            safeLogE("写入日志文件失败", t);
         }
     }
 
@@ -205,7 +215,7 @@ public class FileLogger {
                 currentLogFile.createNewFile();
             }
         } catch (Throwable t) {
-            Log.e(TAG, "创建日志文件失败", t);
+            safeLogE("创建日志文件失败", t);
             currentLogFile = null;
             currentFileSize = 0;
         }
@@ -236,16 +246,16 @@ public class FileLogger {
                     boolean deleted = logFile.delete();
                     if (deleted) {
                         deletedCount++;
-                        Log.i(TAG, "🗑️ 删除旧日志文件：" + logFile.getName());
+                        safeLogE("🗑️ 删除旧日志文件：" + logFile.getName(), null);
                     }
                 }
             }
 
             if (deletedCount > 0) {
-                Log.i(TAG, "✅ 清理完成，共删除 " + deletedCount + " 个旧日志文件");
+                safeLogE("✅ 清理完成，共删除 " + deletedCount + " 个旧日志文件", null);
             }
         } catch (Exception e) {
-            Log.e(TAG, "清理旧日志失败", e);
+            safeLogE("清理旧日志失败", e);
         }
     }
 

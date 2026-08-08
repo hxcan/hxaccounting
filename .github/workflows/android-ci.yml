@@ -11,6 +11,12 @@ on:
 permissions:
   contents: write
 
+# workflow-level env: pass keystore presence to step if conditions
+# (GitHub Actions forbids using `secrets.` directly inside `if:` expressions,
+#  so we evaluate once here into HAS_KEYSTORE, then steps check ${{ env.HAS_KEYSTORE }})
+env:
+  HAS_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 != '' }}
+
 jobs:
   build:
     name: Build & Verify
@@ -46,8 +52,7 @@ jobs:
       run: ./gradlew test
 
     - name: Decode release keystore from secret
-      id: decode-keystore
-      if: ${{ env.HAS_KEYSTORE == 'true' }}
+      if: ${{ env.HAS_KEYSTORE == 'true' && github.event_name != 'pull_request' }}
       run: |
         echo "${{ secrets.RELEASE_KEYSTORE_CONTENT_BASE64 }}" | base64 -d > app/release.keystore
 
@@ -55,7 +60,7 @@ jobs:
       run: ./gradlew assembleDebug
 
     - name: Build release APK
-      if: ${{ env.HAS_KEYSTORE == 'true' }}
+      if: ${{ env.HAS_KEYSTORE == 'true' && github.event_name != 'pull_request' }}
       env:
         KEYSTORE_FILE: app/release.keystore
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -71,7 +76,7 @@ jobs:
         retention-days: 7
 
     - name: Upload release APK
-      if: ${{ env.HAS_KEYSTORE == 'true' }}
+      if: ${{ env.HAS_KEYSTORE == 'true' && github.event_name != 'pull_request' }}
       uses: actions/upload-artifact@v4
       with:
         name: app-release

@@ -28,12 +28,27 @@ import java.util.regex.Pattern;
  *
  * @author 未来姐姐
  * @since 2026-08-06
+ * @updated 2026-08-08 LOG_DIR 改为 lazy 初始化（修复单元测试 CI 失败 #861693812595）
  */
 public class FileLogger {
     private static final String TAG = "FileLogger";
 
-    // 日志文件路径：/sdcard/Download/hxaccounting_logs/
-    private static final String LOG_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download/hxaccounting_logs/";
+    /**
+     * 日志文件路径：/sdcard/Download/hxaccounting_logs/
+     *
+     * <p>v2 修复：改为 lazy 初始化，避免单元测试环境（JVM）下类加载时
+     * 触发 Environment.getExternalStorageDirectory() 调用抛 RuntimeException。
+     *
+     * <p>Android 运行时：第一次调用 getLogDir() 时正常初始化。
+     * 单元测试环境：不会主动调用 getLogDir()，避免 Android API 调用。
+     */
+    private static String LOG_DIR = null;
+    private static String getLogDir() {
+        if (LOG_DIR == null) {
+            LOG_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download/hxaccounting_logs/";
+        }
+        return LOG_DIR;
+    }
 
     // 单文件最大大小：10MB
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -64,10 +79,10 @@ public class FileLogger {
     public static void init(Context context) {
         try {
             // 创建日志目录
-            File logDir = new File(LOG_DIR);
+            File logDir = new File(getLogDir());
             if (!logDir.exists()) {
                 boolean created = logDir.mkdirs();
-                Log.i(TAG, "📁 创建日志目录：" + LOG_DIR + " - " + (created ? "成功" : "失败"));
+                Log.i(TAG, "📁 创建日志目录：" + getLogDir() + " - " + (created ? "成功" : "失败"));
             }
 
             // 清理旧日志
@@ -164,7 +179,7 @@ public class FileLogger {
             String dateStr = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
             String timeStr = new SimpleDateFormat("HHmmss", Locale.getDefault()).format(new Date());
             String logFileName = "hxaccounting_" + dateStr + "_" + timeStr + ".log";
-            currentLogFile = new File(LOG_DIR + logFileName);
+            currentLogFile = new File(getLogDir() + logFileName);
 
             if (currentLogFile.exists()) {
                 currentFileSize = currentLogFile.length();
@@ -184,7 +199,7 @@ public class FileLogger {
      */
     private static void cleanupOldLogs() {
         try {
-            File logDir = new File(LOG_DIR);
+            File logDir = new File(getLogDir());
             if (!logDir.exists()) {
                 return;
             }
@@ -233,7 +248,7 @@ public class FileLogger {
      * 获取日志目录路径
      */
     public static String getLogDirPath() {
-        return LOG_DIR;
+        return getLogDir();
     }
 
     /**

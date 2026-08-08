@@ -28,12 +28,15 @@ import java.util.regex.Pattern;
  *
  * @author 未来姐姐
  * @since 2026-08-06
+ * @updated 2026-08-08 全 catch 块嵌套 try-catch 兜底 Log.e 异常（任务 #861693812595）
  */
 public class FileLogger {
     private static final String TAG = "FileLogger";
 
-    // 日志文件路径：/sdcard/Download/hxaccounting_logs/
-    private static final String LOG_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download/hxaccounting_logs/";
+    // v2 修复（任务 #861693812595）：去掉 final，改用 lazy init
+    // 原版 static final 字段会在类加载时执行 Environment.getExternalStorageDirectory()，
+    // JVM 单元测试环境下抛 RuntimeException，导致 ExceptionInInitializerError。
+    private static String LOG_DIR = null;
 
     // 单文件最大大小：10MB
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -58,16 +61,39 @@ public class FileLogger {
     private static final Pattern API_KEY_PATTERN = Pattern.compile("(api[_-]?key|token|secret|password)[\"']?\\s*[:=]\\s*[\"']?[\\w-]+", Pattern.CASE_INSENSITIVE);
 
     /**
+     * v2 修复（任务 #861693812595）：lazy 初始化 LOG_DIR
+     * 避免类加载时调用 Environment.getExternalStorageDirectory() 导致单元测试失败
+     */
+    private static String getLogDir() {
+        if (LOG_DIR == null) {
+            LOG_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download/hxaccounting_logs/";
+        }
+        return LOG_DIR;
+    }
+
+    /**
+     * v3 修复（任务 #861693812595）：Log.e 在单元测试环境也可能抛 RuntimeException
+     * 所有 catch 块里调 Log.e 时嵌套一层 try-catch 兜底
+     */
+    private static void safeLogE(String msg, Throwable t) {
+        try {
+            Log.e(TAG, msg, t);
+        } catch (Throwable ignored) {
+            // 单元测试环境 Log.e 也可能抛，吞掉
+        }
+    }
+
+    /**
      * 初始化日志系统
      * 必须在 Application.onCreate() 中调用
      */
     public static void init(Context context) {
         try {
             // 创建日志目录
-            File logDir = new File(LOG_DIR);
+            File logDir = new File(getLogDir());
             if (!logDir.exists()) {
                 boolean created = logDir.mkdirs();
-                Log.i(TAG, "📁 创建日志目录：" + LOG_DIR + " - " + (created ? "成功" : "失败"));
+                safeLogE("📁 创建日志目录：" + getLogDir() + " - " + (created ? "成功" : "失败"), null);
             }
 
             // 清理旧日志
@@ -76,9 +102,9 @@ public class FileLogger {
             // 初始化当前日志文件
             rotateLogFile();
 
-            Log.i(TAG, "✅ FileLogger 初始化完成");
+            safeLogE("✅ FileLogger 初始化完成", null);
         } catch (Exception e) {
-            Log.e(TAG, "❌ FileLogger 初始化失败", e);
+            safeLogE("❌ FileLogger 初始化失败", e);
         }
     }
 
@@ -94,8 +120,12 @@ public class FileLogger {
      * 调试日志
      */
     public static void d(String tag, String message) {
-        if (currentLevel <= LEVEL_DEBUG) {
-            writeToFile("DEBUG", tag, message);
+        try {
+            if (currentLevel <= LEVEL_DEBUG) {
+                writeToFile("DEBUG", tag, message);
+            }
+        } catch (Throwable t) {
+            safeLogE("d() 失败", t);
         }
     }
 
@@ -103,8 +133,12 @@ public class FileLogger {
      * 普通信息
      */
     public static void i(String tag, String message) {
-        if (currentLevel <= LEVEL_INFO) {
-            writeToFile("INFO", tag, message);
+        try {
+            if (currentLevel <= LEVEL_INFO) {
+                writeToFile("INFO", tag, message);
+            }
+        } catch (Throwable t) {
+            safeLogE("i() 失败", t);
         }
     }
 
@@ -112,8 +146,12 @@ public class FileLogger {
      * 警告
      */
     public static void w(String tag, String message) {
-        if (currentLevel <= LEVEL_WARN) {
-            writeToFile("WARN", tag, message);
+        try {
+            if (currentLevel <= LEVEL_WARN) {
+                writeToFile("WARN", tag, message);
+            }
+        } catch (Throwable t) {
+            safeLogE("w() 失败", t);
         }
     }
 
@@ -121,8 +159,12 @@ public class FileLogger {
      * 错误
      */
     public static void e(String tag, String message) {
-        if (currentLevel <= LEVEL_ERROR) {
-            writeToFile("ERROR", tag, message);
+        try {
+            if (currentLevel <= LEVEL_ERROR) {
+                writeToFile("ERROR", tag, message);
+            }
+        } catch (Throwable t) {
+            safeLogE("e() 失败", t);
         }
     }
 
@@ -151,8 +193,8 @@ public class FileLogger {
             writer.close();
 
             currentFileSize += logLine.getBytes().length;
-        } catch (IOException e) {
-            Log.e(TAG, "写入日志文件失败", e);
+        } catch (Throwable t) {
+            safeLogE("写入日志文件失败", t);
         }
     }
 
@@ -164,7 +206,7 @@ public class FileLogger {
             String dateStr = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
             String timeStr = new SimpleDateFormat("HHmmss", Locale.getDefault()).format(new Date());
             String logFileName = "hxaccounting_" + dateStr + "_" + timeStr + ".log";
-            currentLogFile = new File(LOG_DIR + logFileName);
+            currentLogFile = new File(getLogDir() + logFileName);
 
             if (currentLogFile.exists()) {
                 currentFileSize = currentLogFile.length();
@@ -172,8 +214,8 @@ public class FileLogger {
                 currentFileSize = 0;
                 currentLogFile.createNewFile();
             }
-        } catch (IOException e) {
-            Log.e(TAG, "创建日志文件失败", e);
+        } catch (Throwable t) {
+            safeLogE("创建日志文件失败", t);
             currentLogFile = null;
             currentFileSize = 0;
         }
@@ -184,7 +226,7 @@ public class FileLogger {
      */
     private static void cleanupOldLogs() {
         try {
-            File logDir = new File(LOG_DIR);
+            File logDir = new File(getLogDir());
             if (!logDir.exists()) {
                 return;
             }
@@ -204,16 +246,16 @@ public class FileLogger {
                     boolean deleted = logFile.delete();
                     if (deleted) {
                         deletedCount++;
-                        Log.i(TAG, "🗑️ 删除旧日志文件：" + logFile.getName());
+                        safeLogE("🗑️ 删除旧日志文件：" + logFile.getName(), null);
                     }
                 }
             }
 
             if (deletedCount > 0) {
-                Log.i(TAG, "✅ 清理完成，共删除 " + deletedCount + " 个旧日志文件");
+                safeLogE("✅ 清理完成，共删除 " + deletedCount + " 个旧日志文件", null);
             }
         } catch (Exception e) {
-            Log.e(TAG, "清理旧日志失败", e);
+            safeLogE("清理旧日志失败", e);
         }
     }
 
@@ -233,7 +275,7 @@ public class FileLogger {
      * 获取日志目录路径
      */
     public static String getLogDirPath() {
-        return LOG_DIR;
+        return getLogDir();
     }
 
     /**

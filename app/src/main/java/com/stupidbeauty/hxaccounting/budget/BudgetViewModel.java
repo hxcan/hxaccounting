@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
  * @author 未来姐姐
  * @since 2026-08-06
  * @updated 2026-08-08 默认窗口由 7 天改为 30 天（对齐 v2 算法默认周期）
+ * @updated 2026-08-08 v2 调试日志：账本切换和参数变更加日志（任务 #861693812595）
  */
 public class BudgetViewModel extends AndroidViewModel {
 
@@ -59,16 +60,27 @@ public class BudgetViewModel extends AndroidViewModel {
 
         // 当账本或参数变化时，重订阅预算结果
         // 用 MediatorLiveData 组合三个源
-        currentAccountIdLive.observeForever(accountId -> rebuildBudgetLive());
-        currentRateLive.observeForever(rate -> rebuildBudgetLive());
-        windowSizeLive.observeForever(size -> rebuildBudgetLive());
+        currentAccountIdLive.observeForever(accountId -> {
+            FileLogger.d(TAG, "currentAccountIdLive 变化: " + accountId);
+            rebuildBudgetLive();
+        });
+        currentRateLive.observeForever(rate -> {
+            FileLogger.d(TAG, "currentRateLive 变化: " + rate);
+            rebuildBudgetLive();
+        });
+        windowSizeLive.observeForever(size -> {
+            FileLogger.d(TAG, "windowSizeLive 变化: " + size);
+            rebuildBudgetLive();
+        });
     }
 
     /**
      * 设置当前账本 ID（账本切换时调用）
      */
     public void setCurrentAccountId(long accountId) {
-        FileLogger.d(TAG, "setCurrentAccountId: " + accountId);
+        Long oldId = currentAccountIdLive.getValue();
+        FileLogger.i(TAG, "setCurrentAccountId: 旧=" + oldId + ", 新=" + accountId
+                + " (变化=" + (oldId == null || oldId != accountId) + ")");
         currentAccountIdLive.setValue(accountId);
     }
 
@@ -115,12 +127,13 @@ public class BudgetViewModel extends AndroidViewModel {
         if (accountId == null || accountId <= 0
                 || rate == null || rate <= 0
                 || windowSize == null || windowSize <= 0) {
-            FileLogger.d(TAG, "rebuildBudgetLive: 参数未就绪，跳过");
+            FileLogger.d(TAG, "rebuildBudgetLive: 参数未就绪，跳过 (accountId="
+                    + accountId + ", rate=" + rate + ", windowSize=" + windowSize + ")");
             budgetResultLive = null;
             return;
         }
 
-        FileLogger.i(TAG, "rebuildBudgetLive: accountId=" + accountId
+        FileLogger.i(TAG, "rebuildBudgetLive: 触发重新构建 accountId=" + accountId
                 + ", rate=" + rate + ", windowSize=" + windowSize);
         budgetResultLive = budgetRepository.getBudgetLive(
                 accountId, windowSize, rate, true);

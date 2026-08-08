@@ -6,6 +6,7 @@ import androidx.lifecycle.Transformations;
 
 import com.stupidbeauty.hxaccounting.data.dao.TransactionDao;
 import com.stupidbeauty.hxaccounting.data.entity.Transaction;
+import com.stupidbeauty.hxaccounting.utils.FileLogger;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -28,8 +29,11 @@ import java.util.concurrent.ExecutorService;
  * @author 未来姐姐
  * @since 2026-08-06
  * @updated 2026-08-08 适配 BudgetCalculator v2 新签名（补 LocalDate today 参数）
+ * @updated 2026-08-08 v2 调试日志：recompute 触发时机加日志（任务 #861693812595）
  */
 public class BudgetRepository {
+
+    private static final String TAG = "BudgetRepository";
 
     private final TransactionDao transactionDao;
     private final ExecutorService ioExecutor;
@@ -64,6 +68,11 @@ public class BudgetRepository {
     public LiveData<BudgetResult> getBudgetLive(
             long accountId, int windowSize, double rate, boolean excludeAnomaly) {
 
+        // v2 调试：入口参数日志
+        FileLogger.i(TAG, "getBudgetLive 入口: accountId=" + accountId
+                + ", windowSize=" + windowSize + ", rate=" + rate
+                + ", excludeAnomaly=" + excludeAnomaly);
+
         // 1. 窗口期的支出（用于算日均）
         long windowStartTime = getStartOfDay(System.currentTimeMillis() - windowSize * 24L * 3600 * 1000);
         LiveData<List<Transaction>> windowExpenses =
@@ -88,18 +97,25 @@ public class BudgetRepository {
 
         Runnable recompute = () -> {
             List<ExpenseRecord> records = toExpenseRecords(cachedExpenses[0]);
+            FileLogger.d(TAG, "recompute 触发: cachedExpenses.size=" + cachedExpenses[0].size()
+                    + ", cachedSpent=" + cachedSpent[0] + ", today=" + today);
             BudgetResult r = BudgetCalculator.calculateFromHistory(
                 records, windowSize, rate, cachedSpent[0], today, excludeAnomaly);
+            FileLogger.i(TAG, "recompute 结果: status=" + r.status
+                    + ", actualDays=" + r.actualDays
+                    + ", suggested=" + r.suggestedBudget);
             result.setValue(r);
         };
 
         result.addSource(windowExpenses, expenses -> {
             cachedExpenses[0] = expenses != null ? expenses : new ArrayList<>();
+            FileLogger.d(TAG, "windowExpenses 回调: size=" + cachedExpenses[0].size());
             recompute.run();
         });
 
         result.addSource(todaySpentLive, spent -> {
             cachedSpent[0] = spent != null ? spent : 0.0;
+            FileLogger.d(TAG, "todaySpentLive 回调: spent=" + cachedSpent[0]);
             recompute.run();
         });
 

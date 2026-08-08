@@ -37,6 +37,7 @@ import java.util.Locale;
  * @author 未来姐姐
  * @since 2026-08-06
  * @updated 2026-08-08 自适应窗口算法 v2 接入（含冷启动期 UI 提示）
+ * @updated 2026-08-08 v2 调试日志：UI 渲染分支加日志（任务 #861693812595）
  */
 public class BudgetCardBinder {
 
@@ -81,13 +82,14 @@ public class BudgetCardBinder {
      * 绑定 LiveData 到 UI
      */
     public void bind() {
-        FileLogger.i(TAG, "绑定 BudgetViewModel LiveData 到 UI");
+        FileLogger.i(TAG, "bind: 开始绑定 BudgetViewModel LiveData 到 UI");
         LiveData<BudgetResult> liveData = viewModel.getBudgetResult();
         if (liveData == null) {
-            FileLogger.w(TAG, "LiveData 为 null（账本未就绪？）");
+            FileLogger.w(TAG, "bind: LiveData 为 null（账本未就绪？）→ 调用 showEmptyState");
             showEmptyState();
             return;
         }
+        FileLogger.i(TAG, "bind: LiveData 非 null，开始 observe");
         liveData.observe(lifecycleOwner, this::render);
     }
 
@@ -95,25 +97,34 @@ public class BudgetCardBinder {
      * 渲染 BudgetResult 到 UI（自适应窗口算法 v2）
      */
     private void render(BudgetResult result) {
+        FileLogger.i(TAG, "render 被调用: result是否null=" + (result == null));
         if (result == null) {
+            FileLogger.w(TAG, "render: result 为 null → 调用 showEmptyState");
             showEmptyState();
             return;
         }
 
+        // v2 调试：状态判定日志
+        FileLogger.i(TAG, String.format(Locale.US,
+                "render: status=%s, actualDays=%d, periodDays=%d, isColdStart=%s, suggested=%.2f, todaySpent=%.2f",
+                result.status, result.actualDays, result.periodDays, result.isColdStart,
+                result.suggestedBudget, result.todaySpent));
+
         // 按 status 分支渲染（v2 新增）
         switch (result.status) {
             case NO_DATA:
-                FileLogger.d(TAG, "render: NO_DATA 状态");
+                FileLogger.d(TAG, "render switch: NO_DATA → showEmptyState");
                 showEmptyState();
                 return;
 
             case COLLECTING_DATA:
-                FileLogger.d(TAG, "render: COLLECTING_DATA 状态（actualDays == 0）");
+                FileLogger.d(TAG, "render switch: COLLECTING_DATA → showCollectingDataState");
                 showCollectingDataState(result);
                 return;
 
             case OK:
             default:
+                FileLogger.d(TAG, "render switch: OK → renderOk");
                 renderOk(result);
                 break;
         }
@@ -184,6 +195,8 @@ public class BudgetCardBinder {
      * 数据积累中状态（v2 新增：仅今天记了 1 笔，actualDays == 0）
      */
     private void showCollectingDataState(BudgetResult result) {
+        FileLogger.i(TAG, "showCollectingDataState: 显示'⏳ 数据积累中' UI (periodDays="
+                + result.periodDays + ")");
         tvRemaining.setText("¥--");
         tvRemainingLabel.setText("⏳ 数据积累中");
         tvRemaining.setTextColor(0xFFFFFFFF);  // 白
@@ -203,6 +216,7 @@ public class BudgetCardBinder {
      * 空状态显示（账本未选择 / 无数据）
      */
     private void showEmptyState() {
+        FileLogger.w(TAG, "showEmptyState: 显示'¥--' + '选择账本后显示' UI");
         tvRemaining.setText("¥--");
         tvRemainingLabel.setText("选择账本后显示");
         tvSuggested.setText("¥0.00");

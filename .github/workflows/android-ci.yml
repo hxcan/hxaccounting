@@ -88,8 +88,8 @@ jobs:
         path: app/build/outputs/apk/release/app-release.apk
         retention-days: 30
 
-  release-debug-apk:
-    name: Release Debug APK
+  release-apk:
+    name: Release APK
     needs: build
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -106,19 +106,29 @@ jobs:
         name: app-debug
         path: apk/
 
-    - name: Generate APK filename with timestamp
+    - name: Download release APK
+      if: ${{ env.HAS_KEYSTORE == 'true' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: app-release
+        path: apk/
+
+    - name: Generate APK filenames with timestamp
       id: apk-name
       run: |
         VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle || echo "0.1.0")
         VERSION_CODE=$(grep -oP 'versionCode\s+\K\d+' app/build.gradle || echo "1")
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-        APK_NAME="hxaccounting-debug-v${VERSION_NAME}-${VERSION_CODE}-${TIMESTAMP}.apk"
-        mv apk/app-debug.apk "apk/${APK_NAME}"
-        echo "apk_name=${APK_NAME}" >> $GITHUB_OUTPUT
-        echo "version_name=${VERSION_NAME}" >> $GITHUB_OUTPUT
-        echo "version_code=${VERSION_CODE}" >> $GITHUB_OUTPUT
-        echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
-        echo "apk_path=apk/${APK_NAME}" >> $GITHUB_OUTPUT
+        DEBUG_APK_NAME="hxaccounting-debug-v${VERSION_NAME}-${VERSION_CODE}-${TIMESTAMP}.apk"
+        mv apk/app-debug.apk "apk/${DEBUG_APK_NAME}"
+        echo "debug_apk_name=${DEBUG_APK_NAME}" >> $GITHUB_OUTPUT
+        echo "debug_apk_path=apk/${DEBUG_APK_NAME}" >> $GITHUB_OUTPUT
+        if [ -f apk/app-release.apk ]; then
+          RELEASE_APK_NAME="hxaccounting-release-v${VERSION_NAME}-${VERSION_CODE}-${TIMESTAMP}.apk"
+          mv apk/app-release.apk "apk/${RELEASE_APK_NAME}"
+          echo "release_apk_name=${RELEASE_APK_NAME}" >> $GITHUB_OUTPUT
+          echo "release_apk_path=apk/${RELEASE_APK_NAME}" >> $GITHUB_OUTPUT
+        fi
         ls -la apk/
 
     - name: Delete old release (if exists)
@@ -161,10 +171,11 @@ jobs:
 
           ---
           ### 📦 下载
-          - **Debug 版**: `hxaccounting-debug-v*.apk` (自动签名，仅供测试)
-            - 文件名格式：`hxaccounting-debug-v{versionName}-{versionCode}-{buildTime}.apk`
+          - **Debug 版**: `hxaccounting-debug-v*.apk`（调试版，自动签名，仅供测试）
+          - **Release 版**: `hxaccounting-release-v*.apk`（正式版，主人 keystore 签名）
 
-          ⚠️ Debug 版本使用共享 debug.keystore 签名，仅供测试。Release 版本需要主人本地配置正式密钥。
+          ⚠️ Debug 版本使用共享 debug.keystore 签名，仅供测试。
+          Release 版本使用主人真实签名密钥，是分发给六日用的正式版。
 
           ### 🔗 下载方式
           点击上方的文件即可下载，**无需登录**。
@@ -172,4 +183,6 @@ jobs:
 
           ## What's Changed
           ${{ github.event.head_commit.message }}
-        files: ${{ steps.apk-name.outputs.apk_path }}
+        files: |
+          ${{ steps.apk-name.outputs.debug_apk_path }}
+          ${{ steps.apk-name.outputs.release_apk_path }}

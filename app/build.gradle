@@ -5,7 +5,8 @@ android {
     compileSdk 34
 
     // Signing configuration: use shared debug.keystore (from sisterfuture project)
-    // for debug builds. Release builds will use 主人's private release.keystore.
+    // for debug builds. Release builds use the keystore file + credentials provided
+    // via env vars (CI) or local keystore.properties (local builds).
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -13,12 +14,20 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        // Release config: 主人 creates keystore.properties locally with:
-        //   storeFile=release.keystore
-        //   storePassword=***
-        //   keyAlias=***
-        //   keyPassword=***
-        // and loads it here. Not committed.
+        // Release config: reads keystore path + passwords from env vars
+        // (set by CI from GitHub Secrets), or falls back to a local
+        // keystore.properties file when building locally.
+        release {
+            def keystorePropsFile = rootProject.file('keystore.properties')
+            def keystoreProps = new Properties()
+            if (keystorePropsFile.exists()) {
+                keystoreProps.load(new FileInputStream(keystorePropsFile))
+            }
+            storeFile file(System.getenv('KEYSTORE_FILE') ?: keystoreProps.getProperty('storeFile', 'release.keystore'))
+            storePassword System.getenv('KEYSTORE_PASSWORD') ?: keystoreProps.getProperty('storePassword', '')
+            keyAlias System.getenv('KEY_ALIAS') ?: keystoreProps.getProperty('keyAlias', '')
+            keyPassword System.getenv('ALIAS_PASSWORD') ?: keystoreProps.getProperty('keyPassword', '')
+        }
     }
 
     defaultConfig {
@@ -35,8 +44,8 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Release signing requires 主人's private release.keystore
-            // (not committed; configured via local keystore.properties)
+            // Use release signing config (CI provides env vars; local builds use keystore.properties)
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

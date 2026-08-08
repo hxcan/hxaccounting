@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- POST_NOTIFICATIONS：Android 13+ 发送通知需要此权限（upgrademanager 库使用） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ACCESS_COARSE_LOCATION：appstore-core 库需要同时声明 FINE + COARSE（Android 12+ 强制），
+         见 #861808091040 后续优化移除 -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
         android:name=".HxAccountingApplication"
         android:allowBackup="true"

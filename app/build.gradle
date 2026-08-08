@@ -27,7 +27,8 @@ android {
             // when build.gradle is inside app/ directory
             storeFile file(System.getenv('KEYSTORE_FILE') ?: keystoreProps.getProperty('storeFile', "${rootDir}/release.keystore"))
             storePassword System.getenv('KEYSTORE_PASSWORD') ?: keystoreProps.getProperty('storePassword', '')
-            keyAlias System.getenv('KEY_ALIAS') ?: keystoreProps.getProperty('keyAlias', '')
+            // GitHub Secret name is KEYSTORE_ALIAS, not KEY_ALIAS
+            keyAlias System.getenv('KEYSTORE_ALIAS') ?: keystoreProps.getProperty('keyAlias', '')
             keyPassword System.getenv('ALIAS_PASSWORD') ?: keystoreProps.getProperty('keyPassword', '')
         }
     }

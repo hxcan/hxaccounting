@@ -40,9 +40,11 @@ import java.util.Locale;
  * 1. 顶部 AppBar（标题"太极记账"）
  * 2. 当前账本切换栏（点击切换 / 长按管理）
  * 3. 预算状态卡片（C2 新增：今日剩余预算）
- * 4. 合计卡片：今日/本周/本月支出 + 本月收入
+ * 4. 合计卡片：今日\/本周\/本月支出 + 本月收入
  * 5. 当前账本的流水列表（B5）
  * 6. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
+ *
+ * <p>debug v3.2 (2026-08-09)：增强 onCurrentAccountChanged 日志，定位切账本预算不更新的问题。
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -91,8 +93,6 @@ public class MainActivity extends AppCompatActivity {
         observeCurrentAccount();
 
         // C2 fix: 同步初始化预算账本 ID，避免首次启动时预算卡片显示"选择账本后显示"
-        // 必须在 observeCurrentAccount() 之后、budgetCardBinder.bind() 之前调用，
-        // 这样 BudgetViewModel.rebuildBudgetLive() 在首次渲染时就能拿到账本 ID。
         long initialAccountId = accountRepository.getCurrentAccountIdSync();
         FileLogger.i(TAG, "C2 fix: onCreate 同步读取当前账本 ID = " + initialAccountId);
         if (initialAccountId != -1L) {
@@ -129,12 +129,10 @@ public class MainActivity extends AppCompatActivity {
      * C2: 把预算状态卡片动态注入到合计卡片上方
      */
     private void injectBudgetCard() {
-        // 通过 inflate 创建预算卡片
         View budgetCardView = LayoutInflater.from(this)
                 .inflate(R.layout.card_budget_status, null, false);
         budgetStatusCard = (MaterialCardView) budgetCardView;
 
-        // 找到合计卡片的父容器，把预算卡片插入到它前面
         View summaryCard = findViewById(R.id.summaryCard);
         if (summaryCard != null && summaryCard.getParent() instanceof LinearLayout) {
             LinearLayout parent = (LinearLayout) summaryCard.getParent();
@@ -142,7 +140,6 @@ public class MainActivity extends AppCompatActivity {
             parent.addView(budgetStatusCard, index);
         }
 
-        // 创建绑定器
         budgetCardBinder = new BudgetCardBinder(this, this, budgetStatusCard, budgetViewModel);
         FileLogger.i(TAG, "预算卡片已注入");
     }
@@ -196,7 +193,30 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 账本切换回调（debug v3.2：增强日志定位问题）
+     */
     private void onCurrentAccountChanged(Account account) {
+        // ====== debug v3.2：详细日志 ======
+        FileLogger.i(TAG, "===== onCurrentAccountChanged 入口 =====");
+        FileLogger.i(TAG, "  account 是否 null: " + (account == null));
+        if (account != null) {
+            FileLogger.i(TAG, "  account.id = " + account.getId()
+                    + ", name = " + account.getName());
+        }
+        FileLogger.i(TAG, "  currentAccountIdShown = " + currentAccountIdShown);
+        long syncId = accountRepository.getCurrentAccountIdSync();
+        FileLogger.i(TAG, "  SharedPreferences 同步账本 ID = " + syncId);
+        if (account != null) {
+            FileLogger.i(TAG, "  if 条件评估: account != null (true) AND "
+                    + "account.getId()=" + account.getId()
+                    + " != currentAccountIdShown=" + currentAccountIdShown
+                    + " → " + (account.getId() != currentAccountIdShown));
+        } else {
+            FileLogger.i(TAG, "  if 条件评估: account == null → 整个 if 跳过");
+        }
+        // ====== debug v3.2 日志结束 ======
+
         if (account == null) {
             FileLogger.d(TAG, "【回调】onCurrentAccountChanged: account = null");
         } else {
@@ -205,10 +225,16 @@ public class MainActivity extends AppCompatActivity {
         updateCurrentAccountDisplay(account);
         loadTransactionsFor(account);
         loadSummaryFor(account);
+
         // C2: 通知预算 ViewModel 当前账本已切换
         if (account != null && account.getId() != currentAccountIdShown) {
+            FileLogger.i(TAG, "C2: 进入 if 分支，调用 budgetViewModel.setCurrentAccountId() = " + account.getId());
             budgetViewModel.setCurrentAccountId(account.getId());
             FileLogger.i(TAG, "C2: 预算 ViewModel 已切换账本 ID = " + account.getId());
+        } else {
+            FileLogger.w(TAG, "C2: **未**调用 budgetViewModel.setCurrentAccountId() "
+                    + "— account=" + (account == null ? "null" : account.getId())
+                    + ", currentAccountIdShown=" + currentAccountIdShown);
         }
     }
 
@@ -273,13 +299,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 加载合计数据（今日/本周/本月支出 + 本月收入）
+     * 加载合计数据（今日\/本周\/本月支出 + 本月收入）
      * 账本变化时自动重新订阅。
      */
     private void loadSummaryFor(Account account) {
         FileLogger.d(TAG, "【合计】loadSummaryFor 开始");
         if (account == null) {
-            // 无账本时清空显示
             tvTodayExpense.setText("¥0.00");
             tvWeekExpense.setText("¥0.00");
             tvMonthExpense.setText("¥0.00");
@@ -292,16 +317,12 @@ public class MainActivity extends AppCompatActivity {
         TimeRange week = weekRange();
         TimeRange month = monthRange();
 
-        // 今日支出
         transactionRepository.getTodayTotal(accountId, today.start, today.end)
                 .observe(this, value -> updateAmount(tvTodayExpense, value, "今日"));
-        // 本周支出
         transactionRepository.getWeekTotal(accountId, week.start)
                 .observe(this, value -> updateAmount(tvWeekExpense, value, "本周"));
-        // 本月支出
         transactionRepository.getMonthTotal(accountId, month.start, month.end)
                 .observe(this, value -> updateAmount(tvMonthExpense, value, "本月"));
-        // 本月收入
         transactionRepository.getMonthIncome(accountId, month.start, month.end)
                 .observe(this, value -> updateAmount(tvMonthIncome, value, "本月收入"));
     }
@@ -312,7 +333,6 @@ public class MainActivity extends AppCompatActivity {
         FileLogger.d(TAG, "【合计】" + label + " = ¥" + amount);
     }
 
-    /** 今天 00:00:00 ~ 明天 00:00:00 */
     private TimeRange todayRange() {
         Calendar cal = Calendar.getInstance();
         cal.set(Calendar.HOUR_OF_DAY, 0);
@@ -325,7 +345,6 @@ public class MainActivity extends AppCompatActivity {
         return new TimeRange(start, end);
     }
 
-    /** 本周一 00:00:00 ~ 下周一 00:00:00 */
     private TimeRange weekRange() {
         Calendar cal = Calendar.getInstance();
         cal.set(Calendar.HOUR_OF_DAY, 0);
@@ -339,7 +358,6 @@ public class MainActivity extends AppCompatActivity {
         return new TimeRange(start, end);
     }
 
-    /** 本月 1 号 00:00:00 ~ 下月 1 号 00:00:00 */
     private TimeRange monthRange() {
         Calendar cal = Calendar.getInstance();
         cal.set(Calendar.DAY_OF_MONTH, 1);

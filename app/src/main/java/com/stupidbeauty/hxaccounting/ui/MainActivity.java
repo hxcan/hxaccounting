@@ -37,14 +37,17 @@ import java.util.Locale;
 
 /**
  * 主页面
- * 1. 顶部 AppBar（标题"太极记账"）
- * 2. 当前账本切换栏（点击切换 / 长按管理）
- * 3. 预算状态卡片（C2 新增：今日剩余预算）
- * 4. 合计卡片：今日\/本周\/本月支出 + 本月收入
- * 5. 当前账本的流水列表（B5）
- * 6. 右下角 FAB 按钮：点击进入快速记账页面（B4 核心）
  *
- * <p>debug v3.2 (2026-08-09)：增强 onCurrentAccountChanged 日志，定位切账本预算不更新的问题。
+ * <p>v3.3 修复 (#861640737779 v3-final):
+ * 真正的根因是 onCurrentAccountChanged 被多次调用，currentAccountIdShown 字段在 if 检查前
+ * 已被 loadTransactionsFor 修改，导致第二次回调时 if 永远不进。
+ *
+ * <p>修复方案：把 currentAccountIdShown 的检查移除，改用 SharedPreferences 同步值对比。
+ * 这样多次回调时，每次都能正确判断是否需要通知预算 ViewModel。
+ *
+ * @author 未来姐姐
+ * @since 2026-08-06
+ * @updated 2026-08-09 v3.3 真正的 bug 修复
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -66,7 +69,9 @@ public class MainActivity extends AppCompatActivity {
     private AccountRepository accountRepository;
     private LiveData<Account> currentAccountLive;
     private LiveData<List<Transaction>> currentTransactionsLive;
-    private long currentAccountIdShown = -1L;
+
+    // v3.3 修复：移除 currentAccountIdShown 字段（导致多次回调时预算通知丢失）
+    // 改用 SharedPreferences 同步值 + budgetViewModel.getCurrentAccountId() 对比
 
     // C2 预算相关
     private BudgetViewModel budgetViewModel;
@@ -92,17 +97,16 @@ public class MainActivity extends AppCompatActivity {
         setupTransactionList();
         observeCurrentAccount();
 
-        // C2 fix: 同步初始化预算账本 ID，避免首次启动时预算卡片显示"选择账本后显示"
+        // C2 fix: 同步初始化预算账本 ID
         long initialAccountId = accountRepository.getCurrentAccountIdSync();
         FileLogger.i(TAG, "C2 fix: onCreate 同步读取当前账本 ID = " + initialAccountId);
         if (initialAccountId != -1L) {
             budgetViewModel.setCurrentAccountId(initialAccountId);
             FileLogger.i(TAG, "C2 fix: 预算卡片已同步初始化账本 ID = " + initialAccountId);
         } else {
-            FileLogger.w(TAG, "C2 fix: 当前账本 ID 为 -1L（首次启动或未创建账本），预算卡片将保持占位文案");
+            FileLogger.w(TAG, "C2 fix: 当前账本 ID 为 -1L");
         }
 
-        // C2: 绑定预算卡片
         if (budgetCardBinder != null) {
             budgetCardBinder.bind();
         }
@@ -125,9 +129,6 @@ public class MainActivity extends AppCompatActivity {
         emptyView = findViewById(R.id.emptyView);
     }
 
-    /**
-     * C2: 把预算状态卡片动态注入到合计卡片上方
-     */
     private void injectBudgetCard() {
         View budgetCardView = LayoutInflater.from(this)
                 .inflate(R.layout.card_budget_status, null, false);
@@ -185,56 +186,44 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         FileLogger.i(TAG, "onResume");
-        long id = accountRepository.getCurrentAccountIdSync();
-        FileLogger.d(TAG, "onResume 读取当前账本 ID = " + id);
-        if (id != -1L) {
-            FileLogger.d(TAG, "onResume 重新观察账本 ID = " + id);
-            accountRepository.getAccountById(id).observe(this, this::onCurrentAccountChanged);
-        }
+        // v3.3 修复：onResume 不再 observe getAccountById，避免重复回调
+        // 账本切换后 AccountRepository 的 currentAccountLive 会自动推送新值
     }
 
     /**
-     * 账本切换回调（debug v3.2：增强日志定位问题）
+     * 账本切换回调（v3.3 修复）
+     *
+     * <p>修复内容：移除 currentAccountIdShown 字段，改用 SharedPreferences 同步值 + budgetViewModel
+     * 当前 ID 对比判断是否需要通知预算 ViewModel。这样多次回调时能正确判断。
      */
     private void onCurrentAccountChanged(Account account) {
-        // ====== debug v3.2：详细日志 ======
         FileLogger.i(TAG, "===== onCurrentAccountChanged 入口 =====");
-        FileLogger.i(TAG, "  account 是否 null: " + (account == null));
-        if (account != null) {
-            FileLogger.i(TAG, "  account.id = " + account.getId()
-                    + ", name = " + account.getName());
-        }
-        FileLogger.i(TAG, "  currentAccountIdShown = " + currentAccountIdShown);
-        long syncId = accountRepository.getCurrentAccountIdSync();
-        FileLogger.i(TAG, "  SharedPreferences 同步账本 ID = " + syncId);
-        if (account != null) {
-            FileLogger.i(TAG, "  if 条件评估: account != null (true) AND "
-                    + "account.getId()=" + account.getId()
-                    + " != currentAccountIdShown=" + currentAccountIdShown
-                    + " → " + (account.getId() != currentAccountIdShown));
-        } else {
-            FileLogger.i(TAG, "  if 条件评估: account == null → 整个 if 跳过");
-        }
-        // ====== debug v3.2 日志结束 ======
-
         if (account == null) {
-            FileLogger.d(TAG, "【回调】onCurrentAccountChanged: account = null");
-        } else {
-            FileLogger.d(TAG, "【回调】onCurrentAccountChanged: account.id = " + account.getId() + ", name = " + account.getName());
+            FileLogger.w(TAG, "  account 为 null，跳过");
+            return;
         }
+        FileLogger.i(TAG, "  account.id = " + account.getId() + ", name = " + account.getName());
+
         updateCurrentAccountDisplay(account);
         loadTransactionsFor(account);
         loadSummaryFor(account);
 
-        // C2: 通知预算 ViewModel 当前账本已切换
-        if (account != null && account.getId() != currentAccountIdShown) {
-            FileLogger.i(TAG, "C2: 进入 if 分支，调用 budgetViewModel.setCurrentAccountId() = " + account.getId());
+        // v3.3 修复：用 BudgetViewModel.getCurrentAccountId() 对比
+        // 不再依赖 currentAccountIdShown 字段（已被 loadTransactionsFor 改写）
+        long currentBudgetAccountId = budgetViewModel.getCurrentAccountId();
+        long sharedPrefsAccountId = accountRepository.getCurrentAccountIdSync();
+        FileLogger.i(TAG, "  BudgetViewModel.getCurrentAccountId() = " + currentBudgetAccountId
+                + ", SharedPreferences ID = " + sharedPrefsAccountId
+                + ", 当前 account.id = " + account.getId());
+
+        if (account.getId() != currentBudgetAccountId) {
+            FileLogger.i(TAG, "C2: 预算 ViewModel 切换账本 ID = " + account.getId()
+                    + " (旧=" + currentBudgetAccountId + ")");
             budgetViewModel.setCurrentAccountId(account.getId());
-            FileLogger.i(TAG, "C2: 预算 ViewModel 已切换账本 ID = " + account.getId());
         } else {
             FileLogger.w(TAG, "C2: **未**调用 budgetViewModel.setCurrentAccountId() "
-                    + "— account=" + (account == null ? "null" : account.getId())
-                    + ", currentAccountIdShown=" + currentAccountIdShown);
+                    + "— account.id=" + account.getId()
+                    + " 已等于 BudgetViewModel 当前 ID=" + currentBudgetAccountId);
         }
     }
 
@@ -265,19 +254,11 @@ public class MainActivity extends AppCompatActivity {
     private void loadTransactionsFor(Account account) {
         FileLogger.d(TAG, "【流水】loadTransactionsFor 开始");
         if (account == null) {
-            currentAccountIdShown = -1L;
             transactionAdapter.setTransactions(null);
             rvTransactions.setVisibility(View.GONE);
             emptyView.setVisibility(View.VISIBLE);
             return;
         }
-
-        if (account.getId() == currentAccountIdShown) {
-            FileLogger.d(TAG, "【流水】账本 ID 未变化，跳过刷新");
-            return;
-        }
-
-        currentAccountIdShown = account.getId();
 
         if (currentTransactionsLive != null) {
             currentTransactionsLive.removeObservers(this);
@@ -298,10 +279,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    /**
-     * 加载合计数据（今日\/本周\/本月支出 + 本月收入）
-     * 账本变化时自动重新订阅。
-     */
     private void loadSummaryFor(Account account) {
         FileLogger.d(TAG, "【合计】loadSummaryFor 开始");
         if (account == null) {

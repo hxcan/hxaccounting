@@ -79,6 +79,7 @@
 
             </LinearLayout>
 
+            <!-- 切换按钮：保留 ▼ 图标（主人已确认接受） -->
             <TextView
                 android:id="@+id/btnSwitchAccount"
                 android:layout_width="wrap_content"
@@ -89,11 +90,14 @@
                 android:textColor="@color/white"
                 android:textSize="14sp" />
 
+            <!-- 管理按钮：v1.0.1 UI 改进，加 ⚙️ 图标与"切换"按钮风格统一 -->
             <TextView
                 android:id="@+id/btnManageAccounts"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="?attr/selectableItemBackground"
+                android:drawableStart="@android:drawable/ic_menu_manage"
+                android:drawablePadding="4dp"
                 android:padding="8dp"
                 android:text="管理"
                 android:textColor="@color/white"

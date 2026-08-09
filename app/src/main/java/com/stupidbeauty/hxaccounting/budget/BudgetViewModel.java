@@ -6,6 +6,7 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Transformations;
 
 import com.stupidbeauty.hxaccounting.data.database.TaijiDatabase;
 import com.stupidbeauty.hxaccounting.data.repository.TransactionRepository;
@@ -25,10 +26,18 @@ import java.util.concurrent.Executors;
  *   <li>账本切换时自动重订阅</li>
  * </ul>
  *
+ * <p>v3 修复 (#861640737779)：用 {@code Transformations.switchMap} 把
+ * 三参数源（账本 ID / 倍率 / 窗口大小）转换为 {@code BudgetResult} LiveData，
+ * 账本切换自动响应。
+ * <p>之前版本的 bug：{@code rebuildBudgetLive()} 每次重建新 LiveData 实例并
+ * 赋值给 {@code budgetResultLive} 字段，但 UI 端 observe 的是旧引用，新数据永远到不了 UI。
+ *
  * @author 未来姐姐
  * @since 2026-08-06
  * @updated 2026-08-08 默认窗口由 7 天改为 30 天（对齐 v2 算法默认周期）
  * @updated 2026-08-08 v2 调试日志：账本切换和参数变更加日志（任务 #861693812595）
+ * @updated 2026-08-09 v3 switchMap 重构：账本切换真正自动响应（任务 #861640737779）
+ * @updated 2026-08-09 v3.1 修复 CI 编译错误：移除非法语法，直接传 paramsReadyLive 给 switchMap
  */
 public class BudgetViewModel extends AndroidViewModel {
 
@@ -36,46 +45,79 @@ public class BudgetViewModel extends AndroidViewModel {
 
     private final BudgetRepository budgetRepository;
     private final ExecutorService ioExecutor;
+
     private final MutableLiveData<Long> currentAccountIdLive = new MutableLiveData<>();
     private final MutableLiveData<Double> currentRateLive = new MutableLiveData<>(1.0);
     /**
      * v2 修复：默认窗口由 7 天改为 30 天，对齐 BudgetCalculator.DEFAULT_PERIOD_DAYS。
      * 主人 2026-08-08 拍板的"周期默认 30 天"在此生效。
-     * （每个账本独立的真实周期由 BudgetSettingsViewModel 提供，
-     *  这里只是兜底默认值。）
      */
     private final MutableLiveData<Integer> windowSizeLive = new MutableLiveData<>(30);
-    private LiveData<BudgetResult> budgetResultLive;
+
+    // v3：MediatorLiveData 跟踪三参数是否都就绪
+    private final androidx.lifecycle.MediatorLiveData<Boolean> paramsReadyLive =
+            new androidx.lifecycle.MediatorLiveData<>();
+
+    // v3：switchMap 输出的 LiveData，UI 端 observe 这个，账本切换时自动重新订阅新数据
+    private final LiveData<BudgetResult> budgetResultLive;
 
     public BudgetViewModel(@NonNull Application application) {
         super(application);
-        FileLogger.i(TAG, "BudgetViewModel 初始化");
+        FileLogger.i(TAG, "BudgetViewModel v3.1 初始化");
 
-        // 初始化 Repository（复用 TransactionRepository 的线程池）
+        // 初始化 Repository
         TransactionRepository transactionRepository = new TransactionRepository(application);
         this.ioExecutor = Executors.newSingleThreadExecutor();
         this.budgetRepository = new BudgetRepository(
                 TaijiDatabase.getInstance(application).transactionDao(),
                 ioExecutor);
 
-        // 当账本或参数变化时，重订阅预算结果
-        // 用 MediatorLiveData 组合三个源
-        currentAccountIdLive.observeForever(accountId -> {
-            FileLogger.d(TAG, "currentAccountIdLive 变化: " + accountId);
-            rebuildBudgetLive();
-        });
-        currentRateLive.observeForever(rate -> {
-            FileLogger.d(TAG, "currentRateLive 变化: " + rate);
-            rebuildBudgetLive();
-        });
-        windowSizeLive.observeForever(size -> {
-            FileLogger.d(TAG, "windowSizeLive 变化: " + size);
-            rebuildBudgetLive();
-        });
+        // v3：跟踪三参数的就绪状态
+        paramsReadyLive.addSource(currentAccountIdLive, id -> updateParamsReady());
+        paramsReadyLive.addSource(currentRateLive, rate -> updateParamsReady());
+        paramsReadyLive.addSource(windowSizeLive, size -> updateParamsReady());
+
+        // v3：用 switchMap 把 paramsReadyLive 转换为 BudgetResult LiveData
+        // 关键修复：账本/参数变化时自动触发 switchMap function，UI 端 observe 引用稳定不变
+        budgetResultLive = Transformations.switchMap(
+                paramsReadyLive,
+                ready -> {
+                    if (ready == null || !ready) {
+                        FileLogger.d(TAG, "switchMap: 参数未就绪，返回 null");
+                        return null;
+                    }
+                    Long accountId = currentAccountIdLive.getValue();
+                    Double rate = currentRateLive.getValue();
+                    Integer windowSize = windowSizeLive.getValue();
+                    FileLogger.i(TAG, "switchMap: 触发预算重新计算 accountId=" + accountId
+                            + ", rate=" + rate + ", windowSize=" + windowSize);
+                    return budgetRepository.getBudgetLive(
+                            accountId, windowSize, rate, true);
+                });
+    }
+
+    /**
+     * v3：检查三参数是否都就绪，更新 paramsReadyLive
+     */
+    private void updateParamsReady() {
+        Long accountId = currentAccountIdLive.getValue();
+        Double rate = currentRateLive.getValue();
+        Integer windowSize = windowSizeLive.getValue();
+
+        boolean ready = accountId != null && accountId > 0
+                && rate != null && rate > 0
+                && windowSize != null && windowSize > 0;
+
+        FileLogger.d(TAG, "updateParamsReady: accountId=" + accountId
+                + ", rate=" + rate + ", windowSize=" + windowSize
+                + " → ready=" + ready);
+        paramsReadyLive.setValue(ready);
     }
 
     /**
      * 设置当前账本 ID（账本切换时调用）
+     *
+     * <p>v3 修复：通过 LiveData 链自动触发预算重订阅。
      */
     public void setCurrentAccountId(long accountId) {
         Long oldId = currentAccountIdLive.getValue();
@@ -110,33 +152,12 @@ public class BudgetViewModel extends AndroidViewModel {
 
     /**
      * 获取预算结果 LiveData
-     * UI observe 此 LiveData，自动响应账本切换、流水变化、参数调整
+     *
+     * <p>v3 修复：返回的是 switchMap 产生的稳定 LiveData，
+     * 账本切换时会自动重新订阅新的 BudgetResult，UI 端观察到的引用保持不变。
      */
     public LiveData<BudgetResult> getBudgetResult() {
         return budgetResultLive;
-    }
-
-    /**
-     * 重建预算 LiveData（参数或账本变化时调用）
-     */
-    private void rebuildBudgetLive() {
-        Long accountId = currentAccountIdLive.getValue();
-        Double rate = currentRateLive.getValue();
-        Integer windowSize = windowSizeLive.getValue();
-
-        if (accountId == null || accountId <= 0
-                || rate == null || rate <= 0
-                || windowSize == null || windowSize <= 0) {
-            FileLogger.d(TAG, "rebuildBudgetLive: 参数未就绪，跳过 (accountId="
-                    + accountId + ", rate=" + rate + ", windowSize=" + windowSize + ")");
-            budgetResultLive = null;
-            return;
-        }
-
-        FileLogger.i(TAG, "rebuildBudgetLive: 触发重新构建 accountId=" + accountId
-                + ", rate=" + rate + ", windowSize=" + windowSize);
-        budgetResultLive = budgetRepository.getBudgetLive(
-                accountId, windowSize, rate, true);
     }
 
     @Override

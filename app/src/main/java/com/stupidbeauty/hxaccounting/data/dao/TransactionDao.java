@@ -24,6 +24,11 @@ public interface TransactionDao {
     @Delete
     void delete(Transaction transaction);
 
+    // --- 按 ID 查询（编辑流水功能用） ---
+
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    Transaction getByIdSync(long id);
+
     // --- 按账本查询（最常用）---
 
     @Query("SELECT * FROM transactions WHERE account_id = :accountId " +

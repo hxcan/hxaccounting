@@ -41,8 +41,26 @@ public class TransactionRepository {
         ioExecutor.execute(() -> transactionDao.update(transaction));
     }
 
+    /**
+     * 带回调的 update（编辑流水功能用）
+     */
+    public void update(Transaction transaction, UpdateCallback callback) {
+        ioExecutor.execute(() -> {
+            transactionDao.update(transaction);
+            if (callback != null) {
+                callback.onUpdated();
+            }
+        });
+    }
+
     public void delete(Transaction transaction) {
         ioExecutor.execute(() -> transactionDao.delete(transaction));
+    }
+
+    // --- 按 ID 查询（编辑流水功能用） ---
+
+    public Transaction getByIdSync(long id) {
+        return transactionDao.getByIdSync(id);
     }
 
     // --- 按账本查询 ---
@@ -100,5 +118,12 @@ public class TransactionRepository {
 
     public interface InsertCallback {
         void onInserted(long id);
+    }
+
+    /**
+     * 更新回调（编辑流水功能用）
+     */
+    public interface UpdateCallback {
+        void onUpdated();
     }
 }

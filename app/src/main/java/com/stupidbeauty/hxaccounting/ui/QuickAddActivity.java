@@ -28,6 +28,7 @@ import com.stupidbeauty.hxaccounting.data.repository.CategoryRepository;
 import com.stupidbeauty.hxaccounting.data.repository.TransactionRepository;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 快速记账 / 编辑流水 Activity（B4 + 编辑流水功能）
@@ -252,10 +253,12 @@ public class QuickAddActivity extends AppCompatActivity {
             });
             rvCategories.setAdapter(categoryAdapter);
             // 编辑模式：回填原分类选中
+            // 修复 CI 编译错误：c.getId() 是 Long 包装类，不能用 != null + .equals 基本类型写法
+            // 改用 Objects.equals() 同时处理 null
             if (pendingCategoryId != null) {
                 categoryAdapter.setSelectedCategoryId(pendingCategoryId);
                 for (Category c : categories) {
-                    if (c.getId() != null && c.getId().equals(pendingCategoryId)) {
+                    if (Objects.equals(c.getId(), pendingCategoryId)) {
                         selectedCategory = c;
                         break;
                     }

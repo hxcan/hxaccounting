@@ -113,50 +113,59 @@ public class QuickAddActivity extends AppCompatActivity {
         if (intent != null && intent.hasExtra(EXTRA_TRANSACTION_ID)) {
             editingTransactionId = intent.getLongExtra(EXTRA_TRANSACTION_ID, -1L);
             if (editingTransactionId > 0) {
-                // 编辑模式：加载流水 + 显示账本选择器
-                loadTransactionForEdit(editingTransactionId);
+                // 编辑模式：先显示账本选择器（账本列表由 loadAccountsForEdit 异步加载）
+                // 流水数据由 loadTransactionForEdit 异步加载
+                // 这样避免在 onCreate 主线程访问 Room 数据库
                 accountPickerContainer.setVisibility(View.VISIBLE);
                 toolbar.setTitle(R.string.title_edit_transaction);
-                btnSave.setText(R.string.btn_save);  // 复用"保存"文案
+                btnSave.setText(R.string.btn_save);
+                loadTransactionForEdit(editingTransactionId);
             }
         }
     }
 
     /**
-     * 同步加载待编辑的流水（Room 同步 API）
+     * 异步加载待编辑的流水（修复主线程崩溃）
+     * 之前用 getByIdSync 会在主线程访问 Room 数据库，导致 IllegalStateException
+     * 修复方案：用 getByIdAsync 异步查询，结果在 callback 回调中处理
      */
     private void loadTransactionForEdit(long id) {
-        editingTransaction = transactionRepository.getByIdSync(id);
-        if (editingTransaction == null) {
-            Toast.makeText(this, "流水不存在或已被删除", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
-        // 填充表单
-        etAmount.setText(String.valueOf(editingTransaction.getAmount()));
-        if (editingTransaction.getDescription() != null) {
-            etDescription.setText(editingTransaction.getDescription());
-        }
-        // 切换类型
-        if (editingTransaction.getTransactionType() == TransactionType.INCOME) {
-            toggleType.check(R.id.btnIncome);
-            selectedType = TransactionType.INCOME;
-        } else {
-            toggleType.check(R.id.btnExpense);
-            selectedType = TransactionType.EXPENSE;
-        }
-        // 切换支付方式
-        PaymentMethod pm = editingTransaction.getPaymentMethodEnum();
-        switch (pm) {
-            case CASH:     togglePayment.check(R.id.payCash); selectedPayment = PaymentMethod.CASH; break;
-            case WECHAT:   togglePayment.check(R.id.payWechat); selectedPayment = PaymentMethod.WECHAT; break;
-            case ALIPAY:   togglePayment.check(R.id.payAlipay); selectedPayment = PaymentMethod.ALIPAY; break;
-            case CARD:     togglePayment.check(R.id.payCard); selectedPayment = PaymentMethod.CARD; break;
-            default:       togglePayment.check(R.id.payOther); selectedPayment = PaymentMethod.OTHER; break;
-        }
-        cbAnomaly.setChecked(editingTransaction.isAnomaly());
-        // 选中的分类在分类列表加载完后设置
-        pendingCategoryId = editingTransaction.getCategoryId();
+        transactionRepository.getByIdAsync(id, transaction -> {
+            // 通过 runOnUiThread 切回主线程
+            runOnUiThread(() -> {
+                if (transaction == null) {
+                    Toast.makeText(this, "流水不存在或已被删除", Toast.LENGTH_SHORT).show();
+                    finish();
+                    return;
+                }
+                editingTransaction = transaction;
+                // 填充表单
+                etAmount.setText(String.valueOf(editingTransaction.getAmount()));
+                if (editingTransaction.getDescription() != null) {
+                    etDescription.setText(editingTransaction.getDescription());
+                }
+                // 切换类型
+                if (editingTransaction.getTransactionType() == TransactionType.INCOME) {
+                    toggleType.check(R.id.btnIncome);
+                    selectedType = TransactionType.INCOME;
+                } else {
+                    toggleType.check(R.id.btnExpense);
+                    selectedType = TransactionType.EXPENSE;
+                }
+                // 切换支付方式
+                PaymentMethod pm = editingTransaction.getPaymentMethodEnum();
+                switch (pm) {
+                    case CASH:     togglePayment.check(R.id.payCash); selectedPayment = PaymentMethod.CASH; break;
+                    case WECHAT:   togglePayment.check(R.id.payWechat); selectedPayment = PaymentMethod.WECHAT; break;
+                    case ALIPAY:   togglePayment.check(R.id.payAlipay); selectedPayment = PaymentMethod.ALIPAY; break;
+                    case CARD:     togglePayment.check(R.id.payCard); selectedPayment = PaymentMethod.CARD; break;
+                    default:       togglePayment.check(R.id.payOther); selectedPayment = PaymentMethod.OTHER; break;
+                }
+                cbAnomaly.setChecked(editingTransaction.isAnomaly());
+                // 选中的分类在分类列表加载完后设置
+                pendingCategoryId = editingTransaction.getCategoryId();
+            });
+        });
     }
 
     private Long pendingCategoryId;  // 分类列表加载完后回填
@@ -253,8 +262,6 @@ public class QuickAddActivity extends AppCompatActivity {
             });
             rvCategories.setAdapter(categoryAdapter);
             // 编辑模式：回填原分类选中
-            // 修复 CI 编译错误：c.getId() 是 Long 包装类，不能用 != null + .equals 基本类型写法
-            // 改用 Objects.equals() 同时处理 null
             if (pendingCategoryId != null) {
                 categoryAdapter.setSelectedCategoryId(pendingCategoryId);
                 for (Category c : categories) {

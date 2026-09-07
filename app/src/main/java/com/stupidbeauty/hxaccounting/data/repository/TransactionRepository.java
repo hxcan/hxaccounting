@@ -57,10 +57,19 @@ public class TransactionRepository {
         ioExecutor.execute(() -> transactionDao.delete(transaction));
     }
 
-    // --- 按 ID 查询（编辑流水功能用） ---
+    // --- 按 ID 查询（编辑流水功能用）---
 
-    public Transaction getByIdSync(long id) {
-        return transactionDao.getByIdSync(id);
+    /**
+     * 异步按 ID 查询（编辑流水功能用）
+     * Room 禁止在主线程执行同步查询，所以用 ioExecutor 后台跑
+     */
+    public void getByIdAsync(long id, GetByIdCallback callback) {
+        ioExecutor.execute(() -> {
+            Transaction transaction = transactionDao.getByIdSync(id);
+            if (callback != null) {
+                callback.onResult(transaction);
+            }
+        });
     }
 
     // --- 按账本查询 ---
@@ -125,5 +134,12 @@ public class TransactionRepository {
      */
     public interface UpdateCallback {
         void onUpdated();
+    }
+
+    /**
+     * 按 ID 查询的异步回调（编辑流水功能用）
+     */
+    public interface GetByIdCallback {
+        void onResult(Transaction transaction);
     }
 }

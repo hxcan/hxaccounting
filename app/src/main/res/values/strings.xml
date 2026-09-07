@@ -31,6 +31,7 @@
 
     <!-- 快速记账页面 -->
     <string name="title_quick_add">记一笔</string>
+    <string name="title_edit_transaction">编辑流水</string>
     <string name="hint_amount">0.00</string>
     <string name="label_amount">金额</string>
     <string name="type_expense">支出</string>
@@ -41,14 +42,17 @@
     <string name="label_payment_method">支付方式</string>
     <string name="label_recipient">收款人 / 商家</string>
     <string name="label_anomaly">异常支出（不计入日均）</string>
+    <string name="label_account">所属账本</string>
     <string name="btn_save">保存</string>
     <string name="btn_cancel">取消</string>
+    <string name="btn_select_account">选择账本</string>
     <string name="btn_select_category">请选择分类</string>
     <string name="error_amount_required">请输入金额</string>
     <string name="error_amount_invalid">金额必须大于 0</string>
     <string name="error_category_required">请选择分类</string>
     <string name="error_no_account">请先创建一个账本</string>
     <string name="msg_save_success">记账成功</string>
+    <string name="msg_update_success">流水已更新</string>
 
     <!-- 流水列表（B5） -->
     <string name="section_today">今天</string>

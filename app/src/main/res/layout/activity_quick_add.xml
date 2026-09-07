@@ -112,7 +112,34 @@
 
         </com.google.android.material.button.MaterialButtonToggleGroup>
 
-        <!-- 3. 分类选择 -->
+        <!-- 3. 所属账本（编辑模式才显示） -->
+        <LinearLayout
+            android:id="@+id/accountPickerContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_account"
+                android:textColor="@color/taiji_text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAccountPicker"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/btn_select_account"
+                android:textAllCaps="false" />
+        </LinearLayout>
+
+        <!-- 4. 分类选择 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -130,7 +157,7 @@
             android:background="@color/taiji_card"
             android:padding="8dp" />
 
-        <!-- 4. 备注输入 -->
+        <!-- 5. 备注输入 -->
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -148,7 +175,7 @@
 
         </com.google.android.material.textfield.TextInputLayout>
 
-        <!-- 5. 支付方式选择 -->
+        <!-- 6. 支付方式选择 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -208,7 +235,7 @@
 
         </com.google.android.material.button.MaterialButtonToggleGroup>
 
-        <!-- 6. 异常支出勾选 -->
+        <!-- 7. 异常支出勾选 -->
         <com.google.android.material.checkbox.MaterialCheckBox
             android:id="@+id/cbAnomaly"
             android:layout_width="wrap_content"
@@ -216,7 +243,7 @@
             android:layout_marginTop="16dp"
             android:text="@string/label_anomaly" />
 
-        <!-- 7. 保存按钮 -->
+        <!-- 8. 保存按钮 -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSave"
             android:layout_width="match_parent"

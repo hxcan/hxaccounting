@@ -1,8 +1,11 @@
 package com.stupidbeauty.hxaccounting.ui;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.view.View;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -25,12 +28,20 @@ import com.stupidbeauty.hxaccounting.data.repository.CategoryRepository;
 import com.stupidbeauty.hxaccounting.data.repository.TransactionRepository;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
- * 快速记账 Activity（B4 核心）
- * 5-10秒完成一笔
+ * 快速记账 / 编辑流水 Activity（B4 + 编辑流水功能）
+ *
+ * 模式说明：
+ * 1. 新增模式（默认）：Intent 不带 EXTRA_TRANSACTION_ID → 记一笔新流水到当前账本
+ * 2. 编辑模式：Intent 带 EXTRA_TRANSACTION_ID → 加载已有流水并允许修改（含账本切换）
+ *
+ * 编辑流水功能：feat/edit-transaction-move-account 分支
  */
 public class QuickAddActivity extends AppCompatActivity {
+
+    public static final String EXTRA_TRANSACTION_ID = "extra_transaction_id";
 
     private EditText etAmount;
     private EditText etDescription;
@@ -38,7 +49,10 @@ public class QuickAddActivity extends AppCompatActivity {
     private MaterialButtonToggleGroup togglePayment;
     private MaterialCheckBox cbAnomaly;
     private MaterialButton btnSave;
+    private MaterialButton btnAccountPicker;
+    private LinearLayout accountPickerContainer;
     private RecyclerView rvCategories;
+    private MaterialToolbar toolbar;
     private CategoryAdapter categoryAdapter;
 
     private TransactionType selectedType = TransactionType.EXPENSE;
@@ -48,6 +62,12 @@ public class QuickAddActivity extends AppCompatActivity {
     private TransactionRepository transactionRepository;
     private CategoryRepository categoryRepository;
     private AccountRepository accountRepository;
+
+    // 编辑模式相关字段
+    private long editingTransactionId = -1L;        // -1 表示新增模式
+    private Transaction editingTransaction;         // 编辑模式下加载的流水
+    private Account selectedAccount;                 // 编辑模式下选中的目标账本
+    private List<Account> allAccounts;              // 编辑模式下拉选项
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,6 +84,14 @@ public class QuickAddActivity extends AppCompatActivity {
         setupPaymentToggle();
         setupCategoryGrid();
 
+        // 解析编辑模式 Intent
+        parseIntent();
+
+        // 加载账本列表（编辑模式用于账本切换器）
+        if (editingTransactionId > 0) {
+            loadAccountsForEdit();
+        }
+
         btnSave.setOnClickListener(v -> saveTransaction());
     }
 
@@ -74,11 +102,106 @@ public class QuickAddActivity extends AppCompatActivity {
         togglePayment = findViewById(R.id.togglePayment);
         cbAnomaly = findViewById(R.id.cbAnomaly);
         btnSave = findViewById(R.id.btnSave);
+        btnAccountPicker = findViewById(R.id.btnAccountPicker);
+        accountPickerContainer = findViewById(R.id.accountPickerContainer);
         rvCategories = findViewById(R.id.rvCategories);
+        toolbar = findViewById(R.id.toolbar);
+    }
+
+    private void parseIntent() {
+        Intent intent = getIntent();
+        if (intent != null && intent.hasExtra(EXTRA_TRANSACTION_ID)) {
+            editingTransactionId = intent.getLongExtra(EXTRA_TRANSACTION_ID, -1L);
+            if (editingTransactionId > 0) {
+                // 编辑模式：加载流水 + 显示账本选择器
+                loadTransactionForEdit(editingTransactionId);
+                accountPickerContainer.setVisibility(View.VISIBLE);
+                toolbar.setTitle(R.string.title_edit_transaction);
+                btnSave.setText(R.string.btn_save);  // 复用"保存"文案
+            }
+        }
+    }
+
+    /**
+     * 同步加载待编辑的流水（Room 同步 API）
+     */
+    private void loadTransactionForEdit(long id) {
+        editingTransaction = transactionRepository.getByIdSync(id);
+        if (editingTransaction == null) {
+            Toast.makeText(this, "流水不存在或已被删除", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+        // 填充表单
+        etAmount.setText(String.valueOf(editingTransaction.getAmount()));
+        if (editingTransaction.getDescription() != null) {
+            etDescription.setText(editingTransaction.getDescription());
+        }
+        // 切换类型
+        if (editingTransaction.getTransactionType() == TransactionType.INCOME) {
+            toggleType.check(R.id.btnIncome);
+            selectedType = TransactionType.INCOME;
+        } else {
+            toggleType.check(R.id.btnExpense);
+            selectedType = TransactionType.EXPENSE;
+        }
+        // 切换支付方式
+        PaymentMethod pm = editingTransaction.getPaymentMethodEnum();
+        switch (pm) {
+            case CASH:     togglePayment.check(R.id.payCash); selectedPayment = PaymentMethod.CASH; break;
+            case WECHAT:   togglePayment.check(R.id.payWechat); selectedPayment = PaymentMethod.WECHAT; break;
+            case ALIPAY:   togglePayment.check(R.id.payAlipay); selectedPayment = PaymentMethod.ALIPAY; break;
+            case CARD:     togglePayment.check(R.id.payCard); selectedPayment = PaymentMethod.CARD; break;
+            default:       togglePayment.check(R.id.payOther); selectedPayment = PaymentMethod.OTHER; break;
+        }
+        cbAnomaly.setChecked(editingTransaction.isAnomaly());
+        // 选中的分类在分类列表加载完后设置
+        pendingCategoryId = editingTransaction.getCategoryId();
+    }
+
+    private Long pendingCategoryId;  // 分类列表加载完后回填
+
+    /**
+     * 加载所有账本（编辑模式用于账本切换 PopupMenu）
+     */
+    private void loadAccountsForEdit() {
+        accountRepository.getActiveAccounts().observe(this, accounts -> {
+            if (accounts == null || accounts.isEmpty()) return;
+            allAccounts = accounts;
+            // 默认选中原流水所属账本
+            long originalAccountId = editingTransaction != null ? editingTransaction.getAccountId() : -1L;
+            for (Account acc : accounts) {
+                if (acc.getId() == originalAccountId) {
+                    selectedAccount = acc;
+                    btnAccountPicker.setText(acc.getName());
+                    break;
+                }
+            }
+            btnAccountPicker.setOnClickListener(v -> showAccountPickerMenu());
+        });
+    }
+
+    private void showAccountPickerMenu() {
+        if (allAccounts == null || allAccounts.isEmpty()) {
+            Toast.makeText(this, "暂无可用账本", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(this, btnAccountPicker);
+        for (int i = 0; i < allAccounts.size(); i++) {
+            Account acc = allAccounts.get(i);
+            String label = (selectedAccount != null && acc.getId() == selectedAccount.getId() ? "✓ " : "   ") + acc.getName();
+            popup.getMenu().add(0, i, i, label);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            Account picked = allAccounts.get(item.getItemId());
+            selectedAccount = picked;
+            btnAccountPicker.setText(picked.getName());
+            return true;
+        });
+        popup.show();
     }
 
     private void setupToolbar() {
-        MaterialToolbar toolbar = findViewById(R.id.toolbar);
         toolbar.setNavigationOnClickListener(v -> finish());
     }
 
@@ -129,6 +252,19 @@ public class QuickAddActivity extends AppCompatActivity {
                 categoryAdapter.setSelectedCategoryId(category.getId());
             });
             rvCategories.setAdapter(categoryAdapter);
+            // 编辑模式：回填原分类选中
+            // 修复 CI 编译错误：c.getId() 是 Long 包装类，不能用 != null + .equals 基本类型写法
+            // 改用 Objects.equals() 同时处理 null
+            if (pendingCategoryId != null) {
+                categoryAdapter.setSelectedCategoryId(pendingCategoryId);
+                for (Category c : categories) {
+                    if (Objects.equals(c.getId(), pendingCategoryId)) {
+                        selectedCategory = c;
+                        break;
+                    }
+                }
+                pendingCategoryId = null;
+            }
         });
     }
 
@@ -155,6 +291,16 @@ public class QuickAddActivity extends AppCompatActivity {
             return;
         }
 
+        if (editingTransactionId > 0) {
+            // 编辑模式：update
+            saveEditedTransaction(amount);
+        } else {
+            // 新增模式：insert
+            saveNewTransaction(amount);
+        }
+    }
+
+    private void saveNewTransaction(double amount) {
         long currentAccountId = accountRepository.getCurrentAccountIdSync();
         if (currentAccountId == -1L) {
             LiveData<List<Account>> accountsLive = accountRepository.getActiveAccounts();
@@ -162,16 +308,15 @@ public class QuickAddActivity extends AppCompatActivity {
                 if (accounts == null || accounts.isEmpty()) {
                     Toast.makeText(this, R.string.error_no_account, Toast.LENGTH_LONG).show();
                 } else {
-                    saveToAccount(accounts.get(0).getId(), amount);
+                    insertTransaction(accounts.get(0).getId(), amount);
                 }
             });
             return;
         }
-
-        saveToAccount(currentAccountId, amount);
+        insertTransaction(currentAccountId, amount);
     }
 
-    private void saveToAccount(long accountId, double amount) {
+    private void insertTransaction(long accountId, double amount) {
         Transaction transaction = new Transaction();
         transaction.setAccountId(accountId);
         transaction.setAmount(amount);
@@ -191,6 +336,32 @@ public class QuickAddActivity extends AppCompatActivity {
 
         transactionRepository.insert(transaction, id -> runOnUiThread(() -> {
             Toast.makeText(this, R.string.msg_save_success, Toast.LENGTH_SHORT).show();
+            finish();
+        }));
+    }
+
+    private void saveEditedTransaction(double amount) {
+        if (selectedAccount == null) {
+            Toast.makeText(this, "请选择账本", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Transaction t = editingTransaction;
+        t.setAccountId(selectedAccount.getId());
+        t.setAmount(amount);
+        t.setTransactionType(selectedType);
+        t.setCategoryId(selectedCategory.getId());
+        t.setPaymentMethodEnum(selectedPayment);
+        t.setAnomaly(cbAnomaly.isChecked());
+        String description = etDescription.getText() == null ? "" : etDescription.getText().toString().trim();
+        if (!TextUtils.isEmpty(description)) {
+            t.setDescription(description);
+        } else {
+            t.setDescription(null);
+        }
+        t.setUpdatedAt(System.currentTimeMillis());
+
+        transactionRepository.update(t, () -> runOnUiThread(() -> {
+            Toast.makeText(this, R.string.msg_update_success, Toast.LENGTH_SHORT).show();
             finish();
         }));
     }

@@ -45,6 +45,8 @@ import java.util.Locale;
  * <p>修复方案：把 currentAccountIdShown 的检查移除，改用 SharedPreferences 同步值对比。
  * 这样多次回调时，每次都能正确判断是否需要通知预算 ViewModel。
  *
+ * <p>feat/edit-transaction-move-account：增加流水点击监听，跳转到编辑模式
+ *
  * @author 未来姐姐
  * @since 2026-08-06
  * @updated 2026-08-09 v3.3 真正的 bug 修复
@@ -69,9 +71,6 @@ public class MainActivity extends AppCompatActivity {
     private AccountRepository accountRepository;
     private LiveData<Account> currentAccountLive;
     private LiveData<List<Transaction>> currentTransactionsLive;
-
-    // v3.3 修复：移除 currentAccountIdShown 字段（导致多次回调时预算通知丢失）
-    // 改用 SharedPreferences 同步值 + budgetViewModel.getCurrentAccountId() 对比
 
     // C2 预算相关
     private BudgetViewModel budgetViewModel;
@@ -167,6 +166,22 @@ public class MainActivity extends AppCompatActivity {
     private void setupTransactionList() {
         rvTransactions.setLayoutManager(new LinearLayoutManager(this));
         transactionAdapter = new TransactionAdapter(this);
+        // feat/edit-transaction-move-account：流水点击进入编辑模式
+        transactionAdapter.setOnTransactionClickListener(new TransactionAdapter.OnTransactionClickListener() {
+            @Override
+            public void onTransactionClick(Transaction transaction) {
+                Intent intent = new Intent(MainActivity.this, QuickAddActivity.class);
+                intent.putExtra(QuickAddActivity.EXTRA_TRANSACTION_ID, transaction.getId());
+                startActivity(intent);
+                FileLogger.d(TAG, "点击流水 ID=" + transaction.getId() + "，进入编辑模式");
+            }
+
+            @Override
+            public void onTransactionLongClick(Transaction transaction, View view) {
+                // 长按后续可扩展：删除 / 复制等
+                FileLogger.d(TAG, "长按流水 ID=" + transaction.getId() + "（暂未实现）");
+            }
+        });
         rvTransactions.setAdapter(transactionAdapter);
         FileLogger.d(TAG, "流水列表初始化完成");
     }
@@ -190,12 +205,6 @@ public class MainActivity extends AppCompatActivity {
         // 账本切换后 AccountRepository 的 currentAccountLive 会自动推送新值
     }
 
-    /**
-     * 账本切换回调（v3.3 修复）
-     *
-     * <p>修复内容：移除 currentAccountIdShown 字段，改用 SharedPreferences 同步值 + budgetViewModel
-     * 当前 ID 对比判断是否需要通知预算 ViewModel。这样多次回调时能正确判断。
-     */
     private void onCurrentAccountChanged(Account account) {
         FileLogger.i(TAG, "===== onCurrentAccountChanged 入口 =====");
         if (account == null) {
@@ -208,8 +217,6 @@ public class MainActivity extends AppCompatActivity {
         loadTransactionsFor(account);
         loadSummaryFor(account);
 
-        // v3.3 修复：用 BudgetViewModel.getCurrentAccountId() 对比
-        // 不再依赖 currentAccountIdShown 字段（已被 loadTransactionsFor 改写）
         long currentBudgetAccountId = budgetViewModel.getCurrentAccountId();
         long sharedPrefsAccountId = accountRepository.getCurrentAccountIdSync();
         FileLogger.i(TAG, "  BudgetViewModel.getCurrentAccountId() = " + currentBudgetAccountId
@@ -388,11 +395,7 @@ public class MainActivity extends AppCompatActivity {
 
                 Account selected = accounts.get(item.getItemId());
                 FileLogger.i(TAG, "【切换】用户选择了账本：「" + selected.getName() + "」(ID=" + selected.getId() + ")");
-                FileLogger.i(TAG, "【切换】调用 setCurrentAccountId() 修改当前账本");
-
                 accountRepository.setCurrentAccountId(selected.getId());
-
-                FileLogger.i(TAG, "【切换】setCurrentAccountId() 调用完毕，弹出 Toast");
                 Toast.makeText(this, "已切换到：" + selected.getName(), Toast.LENGTH_SHORT).show();
                 return true;
             });

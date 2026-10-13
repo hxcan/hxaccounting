@@ -85,6 +85,9 @@ public class MainActivity extends AppCompatActivity {
     private LiveData<Account> currentAccountLive;
     private LiveData<List<Transaction>> currentTransactionsLive;
 
+    // PDF 导出（#918517008461）：缓存当前账本对象（避免重复查库）
+    private Account currentAccountCache;
+
     // PDF 导出（#918517008461）
     private ExecutorService pdfExportExecutor; // 单线程后台执行 PDF 导出
 
@@ -225,6 +228,14 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        // 使用缓存的账本对象（避免重复查库）
+        final Account account = currentAccountCache;
+        if (account == null || account.getId() != currentId) {
+            Toast.makeText(this, "账本信息还在加载，请稍后再试", Toast.LENGTH_SHORT).show();
+            FileLogger.w(TAG, "【导出】currentAccountCache 为空或 ID 不匹配");
+            return;
+        }
+
         // 显示进度对话框
         AlertDialog progressDialog = new AlertDialog.Builder(this)
                 .setTitle("导出账单")
@@ -237,21 +248,6 @@ public class MainActivity extends AppCompatActivity {
         pdfExportExecutor.execute(() -> {
             try {
                 FileLogger.i(TAG, "【导出】开始导出账本 ID = " + currentId);
-
-                // 1. 获取账本信息
-                Account account = null;
-                List<Account> allAccounts = accountRepository.getActiveAccountsSync();
-                if (allAccounts != null) {
-                    for (Account acc : allAccounts) {
-                        if (acc.getId() == currentId) {
-                            account = acc;
-                            break;
-                        }
-                    }
-                }
-                if (account == null) {
-                    throw new Exception("账本不存在");
-                }
 
                 // 2. 查询流水（含分类名，PDF 引擎需要）
                 List<TransactionWithCategory> transactions =
@@ -290,7 +286,7 @@ public class MainActivity extends AppCompatActivity {
                 });
 
             } catch (Exception e) {
-                FileLogger.e(TAG, "【导出】PDF 导出失败", e);
+                FileLogger.e(TAG, "【导出】PDF 导出失败: " + (e.getMessage() != null ? e.getMessage() : "未知错误"));
                 final String errorMsg = e.getMessage() != null ? e.getMessage() : "未知错误";
                 runOnUiThread(() -> {
                     progressDialog.dismiss();
@@ -393,6 +389,9 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         FileLogger.i(TAG, "  account.id = " + account.getId() + ", name = " + account.getName());
+
+        // #918517008461：缓存当前账本对象（PDF 导出用）
+        currentAccountCache = account;
 
         updateCurrentAccountDisplay(account);
         loadTransactionsFor(account);

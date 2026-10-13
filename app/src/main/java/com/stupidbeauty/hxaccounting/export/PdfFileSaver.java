@@ -9,6 +9,8 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
 
+import androidx.annotation.RequiresApi;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -73,6 +75,12 @@ public class PdfFileSaver {
     // Android 10+ (API 29+): MediaStore API
     // ============================================================
 
+    /**
+     * 用 MediaStore.Downloads 保存 PDF
+     * 标记 RequiresApi(Q) 让 Lint 知道这个方法只在 API 29+ 调用
+     * （运行时通过 Build.VERSION.SDK_INT 保护）
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
     private Uri saveViaMediaStore(File sourceFile, String fileName, long timestamp) throws IOException {
         ContentResolver resolver = context.getContentResolver();
 

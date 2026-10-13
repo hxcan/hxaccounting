@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.TextView;
@@ -56,13 +57,16 @@ import java.util.concurrent.Executors;
  * <p>feat／edit-transaction-move-account：增加流水点击监听，跳转到编辑模式
  *
  * <p>feat／export-pdf-ui (#918517008461)：
- * 长按账本切换栏触发「导出 PDF」功能。复用现有 accountBar，零 UI 改动。
- * 流程：数据层同步查询 → 引擎渲染 → 保存到 Download → 弹成功对话框。
+ * 长按账本切换栏触发「导出 PDF」功能（已被 UI 改进任务 #918708913755 替换为按钮）。
+ *
+ * <p>feat／export-pdf-visible-button (#918708913755)：
+ * 把长按入口改成明显可见的下载按钮（替换原来的长按逻辑）。
  *
  * @author 未来姐姐
  * @since 2026-08-06
  * @updated 2026-08-09 v3.3 真正的 bug 修复
  * @updated 2026-10-13 增加 PDF 导出（长按账本栏）
+ * @updated 2026-10-13 替换为明显的导出按钮
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -73,6 +77,8 @@ public class MainActivity extends AppCompatActivity {
     private View accountBar;
     private TextView btnSwitchAccount;
     private TextView btnManageAccounts;
+    // #918708913755：导出 PDF 按钮（明显可见）
+    private ImageButton btnExportPdf;
     private TextView tvTodayExpense;
     private TextView tvWeekExpense;
     private TextView tvMonthExpense;
@@ -141,6 +147,8 @@ public class MainActivity extends AppCompatActivity {
         accountBar = findViewById(R.id.accountBar);
         btnSwitchAccount = findViewById(R.id.btnSwitchAccount);
         btnManageAccounts = findViewById(R.id.btnManageAccounts);
+        // #918708913755：导出 PDF 按钮引用
+        btnExportPdf = findViewById(R.id.btnExportPdf);
         tvTodayExpense = findViewById(R.id.tvTodayExpense);
         tvWeekExpense = findViewById(R.id.tvWeekExpense);
         tvMonthExpense = findViewById(R.id.tvMonthExpense);
@@ -182,44 +190,21 @@ public class MainActivity extends AppCompatActivity {
             FileLogger.d(TAG, "点击管理按钮，进入账本管理页面");
         });
         accountBar.setOnClickListener(v -> showAccountSwitcher(accountBar));
-        // #918517008461：长按账本栏 → 导出当前账本为 PDF
-        // 零 UI 改动：复用现有 accountBar 区域
-        accountBar.setOnLongClickListener(v -> {
-            FileLogger.i(TAG, "【导出】长按账本栏，触发 PDF 导出");
-            showExportPdfMenu(v);
-            return true;
-        });
-        FileLogger.i(TAG, "账本栏长按 → 导出 PDF 已注册");
-    }
-
-    /**
-     * 显示导出 PDF 菜单
-     * #918517008461 最小化方案：长按账本栏 → 弹出 PopupMenu
-     */
-    private void showExportPdfMenu(View anchor) {
-        long currentId = accountRepository.getCurrentAccountIdSync();
-        if (currentId == -1L) {
-            Toast.makeText(this, "请先选择一个账本", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        PopupMenu popup = new PopupMenu(this, anchor);
-        popup.getMenu().add(0, 1, 1, "导出 PDF 账单");
-        popup.getMenu().add(0, 2, 2, "取消");
-
-        popup.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == 1) {
+        // #918708913755：导出 PDF 按钮（替换原来的长按监听）
+        // 旧实现：长按账本栏 → 弹 PopupMenu → 选"导出 PDF 账单"
+        // 新实现：点击 btnExportPdf → 直接调用 startExportPdf()
+        if (btnExportPdf != null) {
+            btnExportPdf.setOnClickListener(v -> {
+                FileLogger.i(TAG, "【导出】点击导出按钮，触发 PDF 导出");
                 startExportPdf();
-                return true;
-            }
-            return false;
-        });
-        popup.show();
+            });
+            FileLogger.i(TAG, "导出 PDF 按钮已注册点击监听");
+        }
     }
 
     /**
      * 启动 PDF 导出流程
-     * #918517008461
+     * #918517008461 + #918708913755
      */
     private void startExportPdf() {
         long currentId = accountRepository.getCurrentAccountIdSync();

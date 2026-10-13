@@ -6,6 +6,8 @@ import androidx.lifecycle.LiveData;
 import com.stupidbeauty.hxaccounting.data.dao.TransactionDao;
 import com.stupidbeauty.hxaccounting.data.database.TaijiDatabase;
 import com.stupidbeauty.hxaccounting.data.entity.Transaction;
+import com.stupidbeauty.hxaccounting.data.entity.TransactionStatistics;
+import com.stupidbeauty.hxaccounting.data.entity.TransactionWithCategory;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -141,5 +143,57 @@ public class TransactionRepository {
      */
     public interface GetByIdCallback {
         void onResult(Transaction transaction);
+    }
+
+    // ====================================================================
+    // 以下为 PDF 导出功能新增方法（#918517000679）
+    // 全部为同步查询包装，调用方负责在后台线程执行
+    // ====================================================================
+
+    /**
+     * 同步按账本查询所有流水（按时间倒序）
+     * PDF 导出用，调用方必须在后台线程！
+     */
+    public List<Transaction> getTransactionsByAccountIdSync(long accountId) {
+        return transactionDao.getByAccountIdSync(accountId);
+    }
+
+    /**
+     * 同步按账本 + 时间区间查询流水
+     * 调用方必须在后台线程！
+     */
+    public List<Transaction> getTransactionsByAccountIdAndTimeRangeSync(
+            long accountId, long startTime, long endTime) {
+        return transactionDao.getByAccountIdAndTimeRangeSync(accountId, startTime, endTime);
+    }
+
+    /**
+     * 同步按账本查询流水（含分类名，PDF 导出专用）
+     * LEFT JOIN categories，一次性拿全分类名
+     * 调用方必须在后台线程！
+     */
+    public List<TransactionWithCategory> getTransactionsWithCategoryByAccountIdSync(long accountId) {
+        return transactionDao.getByAccountIdWithCategorySync(accountId);
+    }
+
+    /**
+     * 同步计算账本统计
+     * 把 Room 的 Row POJO 转成业务 POJO TransactionStatistics
+     * 调用方必须在后台线程！
+     */
+    public TransactionStatistics getStatisticsByAccountIdSync(long accountId) {
+        TransactionDao.TransactionStatisticsRow row =
+                transactionDao.calculateStatisticsRowSync(accountId);
+        TransactionStatistics stats = new TransactionStatistics();
+        if (row != null) {
+            stats.totalIncome = row.totalIncome;
+            stats.totalExpense = row.totalExpense;
+            stats.balance = row.totalIncome - row.totalExpense;
+            stats.transactionCount = (int) row.transactionCount;
+            stats.anomalyCount = (int) row.anomalyCount;
+            stats.incomeCount = (int) row.incomeCount;
+            stats.expenseCount = (int) row.expenseCount;
+        }
+        return stats;
     }
 }

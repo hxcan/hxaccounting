@@ -3,6 +3,8 @@ package com.stupidbeauty.hxaccounting.data.dao;
 import androidx.lifecycle.LiveData;
 import androidx.room.*;
 import com.stupidbeauty.hxaccounting.data.entity.Transaction;
+import com.stupidbeauty.hxaccounting.data.entity.TransactionStatistics;
+import com.stupidbeauty.hxaccounting.data.entity.TransactionWithCategory;
 import java.util.List;
 
 /**
@@ -102,4 +104,75 @@ public interface TransactionDao {
 
     @Query("DELETE FROM transactions WHERE account_id = :accountId")
     void deleteByAccountId(long accountId);
+
+    // ====================================================================
+    // 以下为 PDF 导出功能新增方法（#918517000679）
+    // 全部为同步方法，调用方必须在后台线程！
+    // ====================================================================
+
+    /**
+     * 按账本 ID 同步查询所有流水（按时间倒序）
+     * PDF 导出用，调用方需在后台线程（Room 禁止主线程执行同步查询）
+     */
+    @Query("SELECT * FROM transactions WHERE account_id = :accountId " +
+           "ORDER BY transaction_time DESC")
+    List<Transaction> getByAccountIdSync(long accountId);
+
+    /**
+     * 按账本 ID + 时间区间同步查询流水（按时间倒序）
+     * startTime / endTime 单位毫秒，闭区间
+     * 调用方需在后台线程
+     */
+    @Query("SELECT * FROM transactions WHERE account_id = :accountId " +
+           "AND transaction_time >= :startTime AND transaction_time <= :endTime " +
+           "ORDER BY transaction_time DESC")
+    List<Transaction> getByAccountIdAndTimeRangeSync(
+            long accountId, long startTime, long endTime);
+
+    /**
+     * 按账本 ID JOIN 查询流水（含分类名）
+     * 一次性拿到 TransactionWithCategory 列表，PDF 渲染不用再查 CategoryRepository
+     * LEFT JOIN：未分类（categoryId=NULL）也能正常返回，categoryName 为 null
+     * 调用方需在后台线程
+     */
+    @Query("SELECT t.id AS id, t.account_id AS accountId, t.amount AS amount, " +
+           "t.type AS type, t.category_id AS categoryId, c.name AS categoryName, " +
+           "t.subcategory AS subcategory, t.description AS description, " +
+           "t.recipient AS recipient, t.payment_method AS paymentMethod, " +
+           "t.transaction_time AS transactionTime, t.is_anomaly AS isAnomaly, " +
+           "t.source AS source " +
+           "FROM transactions t LEFT JOIN categories c ON t.category_id = c.id " +
+           "WHERE t.account_id = :accountId " +
+           "ORDER BY t.transaction_time DESC")
+    List<TransactionWithCategory> getByAccountIdWithCategorySync(long accountId);
+
+    /**
+     * 计算账本收支统计（行 POJO，Room 返回类型）
+     * 字段名必须与 SQL SELECT 别名完全一致
+     * 注意：金额 SUM 已自动排除 NULL（COALESCE），count 用 SUM(CASE...) 避免 0 行返回 null
+     * 调用方需在后台线程
+     */
+    @Query("SELECT " +
+           "  COALESCE(SUM(CASE WHEN type = 'INCOME' AND is_anomaly = 0 THEN amount ELSE 0 END), 0) AS totalIncome, " +
+           "  COALESCE(SUM(CASE WHEN type = 'EXPENSE' AND is_anomaly = 0 THEN amount ELSE 0 END), 0) AS totalExpense, " +
+           "  COUNT(*) AS transactionCount, " +
+           "  COALESCE(SUM(CASE WHEN is_anomaly = 1 THEN 1 ELSE 0 END), 0) AS anomalyCount, " +
+           "  COALESCE(SUM(CASE WHEN type = 'INCOME' THEN 1 ELSE 0 END), 0) AS incomeCount, " +
+           "  COALESCE(SUM(CASE WHEN type = 'EXPENSE' THEN 1 ELSE 0 END), 0) AS expenseCount " +
+           "FROM transactions WHERE account_id = :accountId")
+    TransactionStatisticsRow calculateStatisticsRowSync(long accountId);
+
+    /**
+     * Room 返回类型专用 POJO（数据库行）
+     * 字段名必须与 SQL SELECT 别名完全一致
+     * 与 TransactionStatistics（业务 POJO）不同：这里只有数据库原始字段，没有 balance（计算字段）
+     */
+    class TransactionStatisticsRow {
+        public double totalIncome;
+        public double totalExpense;
+        public long transactionCount;
+        public long anomalyCount;
+        public long incomeCount;
+        public long expenseCount;
+    }
 }

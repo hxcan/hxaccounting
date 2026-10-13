@@ -2,6 +2,7 @@ package com.stupidbeauty.hxaccounting.ui;
 
 import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -25,15 +26,22 @@ import com.stupidbeauty.hxaccounting.budget.BudgetCardBinder;
 import com.stupidbeauty.hxaccounting.budget.BudgetViewModel;
 import com.stupidbeauty.hxaccounting.data.entity.Account;
 import com.stupidbeauty.hxaccounting.data.entity.Transaction;
+import com.stupidbeauty.hxaccounting.data.entity.TransactionStatistics;
+import com.stupidbeauty.hxaccounting.data.entity.TransactionWithCategory;
 import com.stupidbeauty.hxaccounting.data.repository.AccountRepository;
 import com.stupidbeauty.hxaccounting.data.repository.TransactionRepository;
+import com.stupidbeauty.hxaccounting.export.BillPdfExporter;
+import com.stupidbeauty.hxaccounting.export.PdfFileSaver;
 import com.stupidbeauty.hxaccounting.utils.FileLogger;
 
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 主页面
@@ -45,11 +53,16 @@ import java.util.Locale;
  * <p>修复方案：把 currentAccountIdShown 的检查移除，改用 SharedPreferences 同步值对比。
  * 这样多次回调时，每次都能正确判断是否需要通知预算 ViewModel。
  *
- * <p>feat/edit-transaction-move-account：增加流水点击监听，跳转到编辑模式
+ * <p>feat／edit-transaction-move-account：增加流水点击监听，跳转到编辑模式
+ *
+ * <p>feat／export-pdf-ui (#918517008461)：
+ * 长按账本切换栏触发「导出 PDF」功能。复用现有 accountBar，零 UI 改动。
+ * 流程：数据层同步查询 → 引擎渲染 → 保存到 Download → 弹成功对话框。
  *
  * @author 未来姐姐
  * @since 2026-08-06
  * @updated 2026-08-09 v3.3 真正的 bug 修复
+ * @updated 2026-10-13 增加 PDF 导出（长按账本栏）
  */
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -72,6 +85,12 @@ public class MainActivity extends AppCompatActivity {
     private LiveData<Account> currentAccountLive;
     private LiveData<List<Transaction>> currentTransactionsLive;
 
+    // PDF 导出（#918517008461）：缓存当前账本对象（避免重复查库）
+    private Account currentAccountCache;
+
+    // PDF 导出（#918517008461）
+    private ExecutorService pdfExportExecutor; // 单线程后台执行 PDF 导出
+
     // C2 预算相关
     private BudgetViewModel budgetViewModel;
     private MaterialCardView budgetStatusCard;
@@ -84,6 +103,8 @@ public class MainActivity extends AppCompatActivity {
 
         accountRepository = new AccountRepository(this);
         transactionRepository = new TransactionRepository(this);
+        // PDF 导出：单线程后台任务
+        pdfExportExecutor = Executors.newSingleThreadExecutor();
 
         // C2: 初始化预算 ViewModel 和卡片
         budgetViewModel = new ViewModelProvider(this).get(BudgetViewModel.class);
@@ -161,12 +182,168 @@ public class MainActivity extends AppCompatActivity {
             FileLogger.d(TAG, "点击管理按钮，进入账本管理页面");
         });
         accountBar.setOnClickListener(v -> showAccountSwitcher(accountBar));
+        // #918517008461：长按账本栏 → 导出当前账本为 PDF
+        // 零 UI 改动：复用现有 accountBar 区域
+        accountBar.setOnLongClickListener(v -> {
+            FileLogger.i(TAG, "【导出】长按账本栏，触发 PDF 导出");
+            showExportPdfMenu(v);
+            return true;
+        });
+        FileLogger.i(TAG, "账本栏长按 → 导出 PDF 已注册");
+    }
+
+    /**
+     * 显示导出 PDF 菜单
+     * #918517008461 最小化方案：长按账本栏 → 弹出 PopupMenu
+     */
+    private void showExportPdfMenu(View anchor) {
+        long currentId = accountRepository.getCurrentAccountIdSync();
+        if (currentId == -1L) {
+            Toast.makeText(this, "请先选择一个账本", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        PopupMenu popup = new PopupMenu(this, anchor);
+        popup.getMenu().add(0, 1, 1, "导出 PDF 账单");
+        popup.getMenu().add(0, 2, 2, "取消");
+
+        popup.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) {
+                startExportPdf();
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    /**
+     * 启动 PDF 导出流程
+     * #918517008461
+     */
+    private void startExportPdf() {
+        long currentId = accountRepository.getCurrentAccountIdSync();
+        if (currentId == -1L) {
+            Toast.makeText(this, "请先选择一个账本", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 使用缓存的账本对象（避免重复查库）
+        final Account account = currentAccountCache;
+        if (account == null || account.getId() != currentId) {
+            Toast.makeText(this, "账本信息还在加载，请稍后再试", Toast.LENGTH_SHORT).show();
+            FileLogger.w(TAG, "【导出】currentAccountCache 为空或 ID 不匹配");
+            return;
+        }
+
+        // 显示进度对话框
+        AlertDialog progressDialog = new AlertDialog.Builder(this)
+                .setTitle("导出账单")
+                .setMessage("正在生成 PDF，请稍候...")
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
+
+        // 后台线程执行：查询数据 + 渲染 PDF + 保存
+        pdfExportExecutor.execute(() -> {
+            try {
+                FileLogger.i(TAG, "【导出】开始导出账本 ID = " + currentId);
+
+                // 2. 查询流水（含分类名，PDF 引擎需要）
+                List<TransactionWithCategory> transactions =
+                        transactionRepository.getTransactionsWithCategoryByAccountIdSync(currentId);
+
+                // 3. 查询统计
+                TransactionStatistics statistics =
+                        transactionRepository.getStatisticsByAccountIdSync(currentId);
+
+                FileLogger.i(TAG, "【导出】查询完成：流水 " + transactions.size() + " 笔，统计 OK");
+
+                // 4. 渲染 PDF
+                BillPdfExporter exporter = new BillPdfExporter(this);
+                File cacheDir = new File(getCacheDir(), "pdf_export");
+                if (!cacheDir.exists()) cacheDir.mkdirs();
+                File tempFile = new File(cacheDir, "temp_export.pdf");
+                exporter.export(account, transactions, statistics, tempFile);
+                FileLogger.i(TAG, "【导出】PDF 渲染完成：" + tempFile.length() + " 字节");
+
+                // 5. 保存到 Download
+                PdfFileSaver saver = new PdfFileSaver(this);
+                Uri savedUri = saver.saveToDownload(tempFile, account.getName());
+                FileLogger.i(TAG, "【导出】PDF 保存成功：URI = " + savedUri);
+
+                // 6. 清理临时文件
+                if (tempFile.exists()) {
+                    tempFile.delete();
+                }
+
+                // 7. 主线程显示成功对话框
+                final Uri finalUri = savedUri;
+                final String finalName = account.getName();
+                runOnUiThread(() -> {
+                    progressDialog.dismiss();
+                    showExportSuccessDialog(finalUri, finalName);
+                });
+
+            } catch (Exception e) {
+                FileLogger.e(TAG, "【导出】PDF 导出失败: " + (e.getMessage() != null ? e.getMessage() : "未知错误"));
+                final String errorMsg = e.getMessage() != null ? e.getMessage() : "未知错误";
+                runOnUiThread(() -> {
+                    progressDialog.dismiss();
+                    showExportErrorDialog(errorMsg);
+                });
+            }
+        });
+    }
+
+    /**
+     * 显示导出成功对话框
+     */
+    private void showExportSuccessDialog(Uri uri, String accountName) {
+        new AlertDialog.Builder(this)
+                .setTitle("导出成功")
+                .setMessage("账本「" + accountName + "」已导出为 PDF 账单！\n\n保存路径：\n" + uri.getPath())
+                .setPositiveButton("打开", (dialog, which) -> {
+                    try {
+                        Intent openIntent = new Intent(Intent.ACTION_VIEW);
+                        openIntent.setDataAndType(uri, "application/pdf");
+                        openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(Intent.createChooser(openIntent, "打开 PDF"));
+                    } catch (Exception e) {
+                        Toast.makeText(this, "未找到 PDF 阅读器", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNeutralButton("分享", (dialog, which) -> {
+                    try {
+                        Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                        shareIntent.setType("application/pdf");
+                        shareIntent.putExtra(Intent.EXTRA_STREAM, uri);
+                        shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(Intent.createChooser(shareIntent, "分享 PDF"));
+                    } catch (Exception e) {
+                        Toast.makeText(this, "分享失败", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("关闭", null)
+                .show();
+    }
+
+    /**
+     * 显示导出失败对话框
+     */
+    private void showExportErrorDialog(String errorMsg) {
+        new AlertDialog.Builder(this)
+                .setTitle("导出失败")
+                .setMessage("PDF 导出失败：\n" + errorMsg)
+                .setPositiveButton("重试", (dialog, which) -> startExportPdf())
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     private void setupTransactionList() {
         rvTransactions.setLayoutManager(new LinearLayoutManager(this));
         transactionAdapter = new TransactionAdapter(this);
-        // feat/edit-transaction-move-account：流水点击进入编辑模式
+        // feat／edit-transaction-move-account：流水点击进入编辑模式
         transactionAdapter.setOnTransactionClickListener(new TransactionAdapter.OnTransactionClickListener() {
             @Override
             public void onTransactionClick(Transaction transaction) {
@@ -178,7 +355,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onTransactionLongClick(Transaction transaction, View view) {
-                // 长按后续可扩展：删除 / 复制等
+                // 长按后续可扩展：删除 ／ 复制等
                 FileLogger.d(TAG, "长按流水 ID=" + transaction.getId() + "（暂未实现）");
             }
         });
@@ -212,6 +389,9 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         FileLogger.i(TAG, "  account.id = " + account.getId() + ", name = " + account.getName());
+
+        // #918517008461：缓存当前账本对象（PDF 导出用）
+        currentAccountCache = account;
 
         updateCurrentAccountDisplay(account);
         loadTransactionsFor(account);
@@ -429,6 +609,9 @@ public class MainActivity extends AppCompatActivity {
         FileLogger.i(TAG, "onDestroy，MainActivity 销毁");
         if (accountRepository != null) {
             accountRepository.shutdown();
+        }
+        if (pdfExportExecutor != null) {
+            pdfExportExecutor.shutdown();
         }
     }
 }

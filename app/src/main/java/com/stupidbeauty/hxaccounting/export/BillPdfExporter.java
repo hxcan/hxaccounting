@@ -197,10 +197,9 @@ public class BillPdfExporter {
     private void drawDetailPages(PdfDocument document, Account account, List<TransactionWithCategory> transactions) {
         int totalRows = transactions.size();
         int totalPages = (int) Math.ceil((double) totalRows / ROWS_PER_PAGE);
-        int pageNum = 1;
 
         for (int pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-            pageNum = pageIndex + 2; // 封面是第 1 页，明细从第 2 页开始
+            int pageNum = pageIndex + 2; // 封面是第 1 页，明细从第 2 页开始
             PdfDocument.PageInfo pageInfo = new PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNum).create();
             PdfDocument.Page page = document.startPage(pageInfo);
 
@@ -217,7 +216,9 @@ public class BillPdfExporter {
             TextPaint headerPaint = createPaint(BODY_FONT_SIZE, Paint.Align.LEFT, true);
             canvas.drawText("日期", xDate + 4, y, headerPaint);
             canvas.drawText("分类", xCategory + 4, y, headerPaint);
-            canvas.drawText("金额", xAmount + COL_AMOUNT_WIDTH - 4, createRightAlignedPaint(BODY_FONT_SIZE, true), y);
+            // 金额列：用右对齐 paint，x 设为右边缘
+            TextPaint amountHeaderPaint = createPaint(BODY_FONT_SIZE, Paint.Align.RIGHT, true);
+            canvas.drawText("金额", xAmount + COL_AMOUNT_WIDTH - 4, y, amountHeaderPaint);
             canvas.drawText("备注", xDesc + 4, y, headerPaint);
             y += 6;
 

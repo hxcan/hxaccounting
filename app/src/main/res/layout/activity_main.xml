@@ -90,6 +90,17 @@
                 android:textColor="@color/white"
                 android:textSize="14sp" />
 
+            <!-- #918708913755：导出 PDF 按钮（替换原来的长按入口） -->
+            <ImageButton
+                android:id="@+id/btnExportPdf"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="导出 PDF 账单"
+                android:padding="8dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_download" />
+
             <!-- 管理按钮：v1.0.1 UI 改进，加 ⚙️ 图标与"切换"按钮风格统一 -->
             <TextView
                 android:id="@+id/btnManageAccounts"

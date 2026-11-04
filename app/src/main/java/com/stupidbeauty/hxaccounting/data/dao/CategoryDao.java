@@ -60,4 +60,17 @@ public interface CategoryDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     void insertAll(List<Category> categories);
+
+    // ====================================================================
+    // 以下为全量数据导出/导入功能新增方法（#937493315851）
+    // 全部为同步方法，调用方必须在后台线程！
+    // ====================================================================
+
+    /**
+     * 同步查询全部分类（含已归档，含二级分类）
+     * 全量数据导出用，调用方需在后台线程（Room 禁止主线程执行同步查询）
+     */
+    @Query("SELECT * FROM categories ORDER BY id ASC")
+    List<Category> getAllCategoriesSync();
+
 }

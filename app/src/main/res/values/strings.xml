@@ -118,4 +118,7 @@
     <!-- v1.0.0 新增 欢迎语 -->
     <string name="welcome_title">欢迎使用太极记账 v1.0.0</string>
     <string name="welcome_message">自适应预算，量入为出</string>
+
+    <!-- #937493315851：数据导入导出（永久免费，不设收费门槛） -->
+    <string name="title_data_transfer">数据导入导出</string>
 </resources>

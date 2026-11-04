@@ -550,8 +550,17 @@ public class MainActivity extends AppCompatActivity {
                 popup.getMenu().add(0, i, i, displayName);
             }
             popup.getMenu().add(0, 999, 999, "管理账本...");
+            // #937493315851：数据导入导出入口（全量导出/导入，永久免费）
+            popup.getMenu().add(0, 998, 998, "📤 数据导入导出...");
 
             popup.setOnMenuItemClickListener(item -> {
+                if (item.getItemId() == 998) {
+                    // #937493315851：进入数据导入导出页面
+                    Intent intent = new Intent(MainActivity.this, DataTransferActivity.class);
+                    startActivity(intent);
+                    FileLogger.i(TAG, "【数据】进入数据导入导出页面");
+                    return true;
+                }
                 if (item.getItemId() == 999) {
                     Intent intent = new Intent(MainActivity.this, AccountsActivity.class);
                     startActivity(intent);

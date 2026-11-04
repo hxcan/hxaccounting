@@ -41,6 +41,13 @@
             android:exported="false"
             android:label="@string/title_budget_settings"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- #937493315851：数据导入导出页面（导出/导入全部账本数据，永久免费） -->
+        <activity
+            android:name=".ui.DataTransferActivity"
+            android:exported="false"
+            android:label="@string/title_data_transfer"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 
 </manifest>

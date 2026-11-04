@@ -162,6 +162,24 @@ public interface TransactionDao {
            "FROM transactions WHERE account_id = :accountId")
     TransactionStatisticsRow calculateStatisticsRowSync(long accountId);
 
+    // ====================================================================
+    // 以下为全量数据导出/导入功能新增方法（#937493315851）
+    // 全部为同步方法，调用方必须在后台线程！
+    // ====================================================================
+
+    /**
+     * 同步查询全部流水（跨所有账本，按时间倒序）
+     * 全量数据导出用，调用方需在后台线程（Room 禁止主线程执行同步查询）
+     */
+    @Query("SELECT * FROM transactions ORDER BY transaction_time DESC, id ASC")
+    List<Transaction> getAllTransactionsSync();
+
+    /**
+     * 同步查询某账本全部流水（导入去重指纹比对用）
+     * 调用方需在后台线程
+     */
+    @Query("SELECT * FROM transactions WHERE account_id = :accountId")
+    List<Transaction> getByAccountIdForImportSync(long accountId);
     /**
      * Room 返回类型专用 POJO（数据库行）
      * 字段名必须与 SQL SELECT 别名完全一致

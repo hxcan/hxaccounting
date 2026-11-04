@@ -533,21 +533,25 @@ public class MainActivity extends AppCompatActivity {
         FileLogger.i(TAG, "【切换】showAccountSwitcher 被点击");
         LiveData<List<Account>> accountsLive = accountRepository.getActiveAccounts();
         accountsLive.observe(this, accounts -> {
-            if (accounts == null || accounts.isEmpty()) {
-                Toast.makeText(this, "还没有账本，请先创建", Toast.LENGTH_SHORT).show();
-                FileLogger.w(TAG, "【切换】没有账本可选");
-                return;
+            boolean hasAccounts = accounts != null && !accounts.isEmpty();
+            if (!hasAccounts) {
+                // #937493315851：没有账本时仍然要弹出菜单！
+                // 否则用户无法进入「数据导入导出」页面导入数据 —— 死锁。
+                FileLogger.w(TAG, "【切换】没有账本可选，仍弹出菜单（可导入数据）");
+            } else {
+                FileLogger.d(TAG, "【切换】找到 " + accounts.size() + " 个账本");
             }
 
-            FileLogger.d(TAG, "【切换】找到 " + accounts.size() + " 个账本");
             PopupMenu popup = new PopupMenu(this, anchor);
             long currentId = accountRepository.getCurrentAccountIdSync();
             FileLogger.d(TAG, "【切换】当前账本 ID = " + currentId);
 
-            for (int i = 0; i < accounts.size(); i++) {
-                Account acc = accounts.get(i);
-                String displayName = (acc.getId() == currentId ? "✓ " : "   ") + acc.getName();
-                popup.getMenu().add(0, i, i, displayName);
+            if (hasAccounts) {
+                for (int i = 0; i < accounts.size(); i++) {
+                    Account acc = accounts.get(i);
+                    String displayName = (acc.getId() == currentId ? "✓ " : "   ") + acc.getName();
+                    popup.getMenu().add(0, i, i, displayName);
+                }
             }
             popup.getMenu().add(0, 999, 999, "管理账本...");
             // #937493315851：数据导入导出入口（全量导出/导入，永久免费）
@@ -566,7 +570,10 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                     return true;
                 }
-
+                // #937493315851：没有账本时，避免索引越界崩溃
+                if (!hasAccounts) {
+                    return true;
+                }
                 Account selected = accounts.get(item.getItemId());
                 FileLogger.i(TAG, "【切换】用户选择了账本：「" + selected.getName() + "」(ID=" + selected.getId() + ")");
                 accountRepository.setCurrentAccountId(selected.getId());

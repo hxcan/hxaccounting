@@ -172,4 +172,23 @@ public interface AccountDao {
      */
     @Query("SELECT EXISTS(SELECT 1 FROM accounts WHERE name = :name AND is_archived = 0)")
     boolean existsByName(String name);
+
+    // ====================================================================
+    // 以下为全量数据导出/导入功能新增方法（#937493315851）
+    // 全部为同步方法，调用方必须在后台线程！
+    // ====================================================================
+
+    /**
+     * 同步查询全部账本（含已归档）
+     * 全量数据导出用，调用方需在后台线程（Room 禁止主线程执行同步查询）
+     */
+    @Query("SELECT * FROM accounts ORDER BY sort_order ASC, created_at ASC")
+    List<Account> getAllAccountsSync();
+
+    /**
+     * 同步查询全部未归档账本
+     * 导入时判断"是否已有同名账本"用，调用方需在后台线程
+     */
+    @Query("SELECT * FROM accounts WHERE is_archived = 0 ORDER BY sort_order ASC, created_at ASC")
+    List<Account> getActiveAccountsSync();
 }

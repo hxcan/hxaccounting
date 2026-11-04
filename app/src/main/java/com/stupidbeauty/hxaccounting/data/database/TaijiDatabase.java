@@ -137,97 +137,117 @@ public abstract class TaijiDatabase extends RoomDatabase {
 
     /**
      * 插入系统预置分类（支出类）
+     *
+     * <p>⚠️ 修复：全新安装首次建库崩溃（FOREIGN KEY constraint failed）。
+     *
+     * <p>原实现用 insertAll 一次性插入父 + 子分类，但父分类此时尚未落库，
+     * {@code createChild(..., food.getId(), ...)} 拿到的是 0（未落库的自增 ID），
+     * 子分类 parent_id=0 指向不存在的父分类，触发外键约束失败。
+     *
+     * <p>现改为与 {@code CategoryRepository.insertSeedCategories()} 一致的两步插入：
+     * <ol>
+     *   <li>先逐个插入父分类，用返回的真实 ID 回填 {@code parent.setId()}</li>
+     *   <li>再插入子分类，parentId 使用真实 ID</li>
+     * </ol>
      */
     private static void populateDefaultCategories(CategoryDao categoryDao) {
-        List<Category> categories = new ArrayList<>();
+        List<Category> parents = new ArrayList<>();
+        List<Category> children = new ArrayList<>();
 
         // 🍜 餐饮
         Category food = new Category("餐饮", CategoryType.EXPENSE);
         food.setIcon("restaurant");
         food.setColor("#FF6B6B");
         food.setSystem(true);
-        categories.add(food);
-
-        categories.add(createChild("早餐", food.getId(), "bread"));
-        categories.add(createChild("午餐", food.getId(), "rice"));
-        categories.add(createChild("晚餐", food.getId(), "noodles"));
-        categories.add(createChild("外卖", food.getId(), "takeout"));
-        categories.add(createChild("奶茶", food.getId(), "tea"));
+        parents.add(food);
 
         // 🚗 交通
         Category transport = new Category("交通", CategoryType.EXPENSE);
         transport.setIcon("car");
         transport.setColor("#4ECDC4");
         transport.setSystem(true);
-        categories.add(transport);
-
-        categories.add(createChild("公交地铁", transport.getId(), "bus"));
-        categories.add(createChild("打车", transport.getId(), "taxi"));
-        categories.add(createChild("加油", transport.getId(), "fuel"));
+        parents.add(transport);
 
         // 🛒 购物
         Category shopping = new Category("购物", CategoryType.EXPENSE);
         shopping.setIcon("shopping");
         shopping.setColor("#FFA07A");
         shopping.setSystem(true);
-        categories.add(shopping);
-
-        categories.add(createChild("日用", shopping.getId(), "daily"));
-        categories.add(createChild("服饰", shopping.getId(), "clothing"));
+        parents.add(shopping);
 
         // 🏠 居家
         Category home = new Category("居家", CategoryType.EXPENSE);
         home.setIcon("home");
         home.setColor("#95E1D3");
         home.setSystem(true);
-        categories.add(home);
-
-        categories.add(createChild("房租", home.getId(), "rent"));
-        categories.add(createChild("水电煤", home.getId(), "utility"));
+        parents.add(home);
 
         // 🎮 娱乐
         Category entertainment = new Category("娱乐", CategoryType.EXPENSE);
         entertainment.setIcon("game");
         entertainment.setColor("#F38181");
         entertainment.setSystem(true);
-        categories.add(entertainment);
+        parents.add(entertainment);
 
         //  医疗（异常支出）
         Category medical = new Category("医疗", CategoryType.EXPENSE);
         medical.setIcon("medical");
         medical.setColor("#AA96DA");
         medical.setSystem(true);
-        categories.add(medical);
+        parents.add(medical);
 
         // 📚 教育（异常支出）
         Category education = new Category("教育", CategoryType.EXPENSE);
         education.setIcon("education");
         education.setColor("#6C5CE7");
         education.setSystem(true);
-        categories.add(education);
+        parents.add(education);
 
         // 👶 育儿
         Category parenting = new Category("育儿", CategoryType.EXPENSE);
         parenting.setIcon("baby");
         parenting.setColor("#FDA7DF");
         parenting.setSystem(true);
-        categories.add(parenting);
+        parents.add(parenting);
 
         // 💰 收入
         Category income = new Category("收入", CategoryType.INCOME);
         income.setIcon("income");
         income.setColor("#26DE81");
         income.setSystem(true);
-        categories.add(income);
+        parents.add(income);
 
         // 📦 其他
         Category other = new Category("其他", CategoryType.ALL);
         other.setIcon("other");
         other.setColor("#778CA3");
         other.setSystem(true);
-        categories.add(other);
+        parents.add(other);
 
-        categoryDao.insertAll(categories);
+        // ========== 第一步：逐个插入父分类（让 Room 生成真实 ID）==========
+        for (Category parent : parents) {
+            long newId = categoryDao.insert(parent);
+            parent.setId(newId);
+        }
+
+        // ========== 第二步：插入子分类（parentId 用真实 ID）==========
+        children.add(createChild("早餐", food.getId(), "bread"));
+        children.add(createChild("午餐", food.getId(), "rice"));
+        children.add(createChild("晚餐", food.getId(), "noodles"));
+        children.add(createChild("外卖", food.getId(), "takeout"));
+        children.add(createChild("奶茶", food.getId(), "tea"));
+
+        children.add(createChild("公交地铁", transport.getId(), "bus"));
+        children.add(createChild("打车", transport.getId(), "taxi"));
+        children.add(createChild("加油", transport.getId(), "fuel"));
+
+        children.add(createChild("日用", shopping.getId(), "daily"));
+        children.add(createChild("服饰", shopping.getId(), "clothing"));
+
+        children.add(createChild("房租", home.getId(), "rent"));
+        children.add(createChild("水电煤", home.getId(), "utility"));
+
+        categoryDao.insertAll(children);
     }
 
     private static Category createChild(String name, long parentId, String icon) {

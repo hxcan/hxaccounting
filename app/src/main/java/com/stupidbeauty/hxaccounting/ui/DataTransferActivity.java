@@ -152,7 +152,7 @@ public class DataTransferActivity extends AppCompatActivity {
      *   <li>ACTION_OPEN_DOCUMENT + 通配 *&#47;*</li>
      * </ol>
      * <p>全部失败 → 引导用户把文件放到 Download 目录，并自动扫描导入。
-     * /
+     */
     private void startImportPicker() {
         // 方案 1：ACTION_OPEN_DOCUMENT + 精确 MIME 类型
         if (tryOpenPicker(Intent.ACTION_OPEN_DOCUMENT,
@@ -181,7 +181,7 @@ public class DataTransferActivity extends AppCompatActivity {
      * @param action      Intent action
      * @param mimeTypes   MIME 类型数组，null 表示不限制（使用 *&#47;*）
      * @return true 表示成功调起
-     * /
+     */
     private boolean tryOpenPicker(String action, String[] mimeTypes) {
         try {
             Intent intent = new Intent(action);
@@ -202,7 +202,7 @@ public class DataTransferActivity extends AppCompatActivity {
 
     /**
      * 设备无可用文件管理器时的提示 + 自动扫描 Download 目录
-     * /
+     */
     private void showNoFileManagerHint() {
         new AlertDialog.Builder(this)
                 .setTitle("无法打开文件选择器")
@@ -214,6 +214,7 @@ public class DataTransferActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -261,12 +262,14 @@ public class DataTransferActivity extends AppCompatActivity {
             }
         });
     }
+
+    /**
     /**
      * 自动在 Download 目录查找导出的 JSON 文件并导入
      *
      * <p>用于设备没有可用文件管理器的场景（部分定制 ROM）。
      * <p>查找范围：Download 根目录 + Download/太极记账导出/ 子目录。
-     * /
+     */
     private void autoFindAndImport() {
         transferExecutor.execute(() -> {
             try {
@@ -293,7 +296,7 @@ public class DataTransferActivity extends AppCompatActivity {
 
     /**
      * 在 Download 目录中查找导出的 JSON 数据文件（按修改时间倒序取最新）
-     * /
+     */
     private java.io.File findExportFile() {
         java.util.List<java.io.File> candidates = new java.util.ArrayList<>();
 
@@ -322,7 +325,7 @@ public class DataTransferActivity extends AppCompatActivity {
 
     /**
      * 收集目录下的 JSON 文件（非递归）
-     * /
+     */
     private void collectJsonFiles(java.io.File dir, java.util.List<java.io.File> out) {
         java.io.File[] files = dir.listFiles();
         if (files == null) {

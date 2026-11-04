@@ -144,20 +144,75 @@ public class DataTransferActivity extends AppCompatActivity {
 
     /**
      * 打开系统文件选择器（零权限，不需要存储权限）
-     */
+     *
+     * <p>三级降级（应对定制 ROM 没有预装文件管理器的情况）：
+     * <ol>
+     *   <li>ACTION_OPEN_DOCUMENT + 精确 MIME 类型</li>
+     *   <li>ACTION_GET_CONTENT + 通配 *&#47;*</li>
+     *   <li>ACTION_OPEN_DOCUMENT + 通配 *&#47;*</li>
+     * </ol>
+     * <p>全部失败 → 引导用户把文件放到 Download 目录，并自动扫描导入。
+     * /
     private void startImportPicker() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        // 允许用户看到 JSON 文件
-        intent.putExtra(Intent.EXTRA_MIME_TYPES,
-                new String[]{"application/json", "text/plain", "text/json", "*/*"});
-        try {
-            startActivityForResult(intent, REQUEST_IMPORT_FILE);
-        } catch (Exception e) {
-            FileLogger.e(TAG, "无法打开文件选择器: " + e.getMessage());
-            android.widget.Toast.makeText(this, "无法打开文件选择器", android.widget.Toast.LENGTH_SHORT).show();
+        // 方案 1：ACTION_OPEN_DOCUMENT + 精确 MIME 类型
+        if (tryOpenPicker(Intent.ACTION_OPEN_DOCUMENT,
+                new String[]{"application/json", "text/plain", "text/json"})) {
+            return;
         }
+
+        // 方案 2：ACTION_GET_CONTENT + 通配类型
+        if (tryOpenPicker(Intent.ACTION_GET_CONTENT, null)) {
+            return;
+        }
+
+        // 方案 3：ACTION_OPEN_DOCUMENT + 通配类型
+        if (tryOpenPicker(Intent.ACTION_OPEN_DOCUMENT, null)) {
+            return;
+        }
+
+        // 全部失败：该设备没有可用的文件管理器 → 引导手动放文件 + 自动扫描
+        FileLogger.e(TAG, "无可用文件管理器，改为自动扫描 Download 目录");
+        showNoFileManagerHint();
+    }
+
+    /**
+     * 尝试打开文件选择器
+     *
+     * @param action      Intent action
+     * @param mimeTypes   MIME 类型数组，null 表示不限制（使用 *&#47;*）
+     * @return true 表示成功调起
+     * /
+    private boolean tryOpenPicker(String action, String[] mimeTypes) {
+        try {
+            Intent intent = new Intent(action);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            if (mimeTypes != null && mimeTypes.length > 0) {
+                intent.setType(mimeTypes[0]);
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+            } else {
+                intent.setType("*/*");
+            }
+            startActivityForResult(intent, REQUEST_IMPORT_FILE);
+            return true;
+        } catch (Exception e) {
+            FileLogger.w(TAG, action + " 打开失败: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 设备无可用文件管理器时的提示 + 自动扫描 Download 目录
+     * /
+    private void showNoFileManagerHint() {
+        new AlertDialog.Builder(this)
+                .setTitle("无法打开文件选择器")
+                .setMessage("这台设备没有可用的文件管理器。\n\n"
+                        + "请把导出的 JSON 文件放到：\n"
+                        + "Download/太极记账导出/\n\n"
+                        + "放好后点「自动查找并导入」，姐姐会帮你找出来。")
+                .setPositiveButton("自动查找并导入", (dialog, which) -> autoFindAndImport())
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     @Override
@@ -206,6 +261,84 @@ public class DataTransferActivity extends AppCompatActivity {
             }
         });
     }
+    /**
+     * 自动在 Download 目录查找导出的 JSON 文件并导入
+     *
+     * <p>用于设备没有可用文件管理器的场景（部分定制 ROM）。
+     * <p>查找范围：Download 根目录 + Download/太极记账导出/ 子目录。
+     * /
+    private void autoFindAndImport() {
+        transferExecutor.execute(() -> {
+            try {
+                java.io.File found = findExportFile();
+                if (found == null) {
+                    runOnUiThread(() -> showError("未找到数据文件",
+                            "没在 Download 目录找到导出的 JSON 文件。\n\n"
+                                    + "请确认文件已放到：\n"
+                                    + "Download/太极记账导出/\n\n"
+                                    + "然后再点一次「导入数据」。"));
+                    return;
+                }
+
+                FileLogger.i(TAG, "自动找到数据文件：" + found.getAbsolutePath());
+                Uri uri = Uri.fromFile(found);
+                runOnUiThread(() -> doImport(uri));
+            } catch (Exception e) {
+                FileLogger.e(TAG, "自动查找失败: " + e.getMessage());
+                runOnUiThread(() -> showError("查找失败",
+                        e.getMessage() != null ? e.getMessage() : "未知错误"));
+            }
+        });
+    }
+
+    /**
+     * 在 Download 目录中查找导出的 JSON 数据文件（按修改时间倒序取最新）
+     * /
+    private java.io.File findExportFile() {
+        java.util.List<java.io.File> candidates = new java.util.ArrayList<>();
+
+        java.io.File external = android.os.Environment.getExternalStorageDirectory();
+        if (external == null) {
+            return null;
+        }
+
+        // Download 根目录
+        collectJsonFiles(external, candidates);
+        // Download/太极记账导出/
+        java.io.File exportDir = new java.io.File(external, "太极记账导出");
+        if (exportDir.isDirectory()) {
+            collectJsonFiles(exportDir, candidates);
+        }
+
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        // 按修改时间倒序，最新的优先
+        java.util.Collections.sort(candidates, (a, b) ->
+                Long.compare(b.lastModified(), a.lastModified()));
+        return candidates.get(0);
+    }
+
+    /**
+     * 收集目录下的 JSON 文件（非递归）
+     * /
+    private void collectJsonFiles(java.io.File dir, java.util.List<java.io.File> out) {
+        java.io.File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (java.io.File f : files) {
+            if (!f.isFile()) {
+                continue;
+            }
+            String name = f.getName().toLowerCase(java.util.Locale.getDefault());
+            if (name.endsWith(".json")) {
+                out.add(f);
+            }
+        }
+    }
+
 
     /**
      * 显示导入结果报告

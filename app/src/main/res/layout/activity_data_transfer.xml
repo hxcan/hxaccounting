@@ -116,6 +116,19 @@
                 android:textSize="16sp"
                 app:backgroundTint="@color/taiji_text_primary" />
 
+            <!-- 自动查找并导入（兼容没有可用文件管理器的设备） -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAutoImport"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                android:paddingVertical="14dp"
+                android:text="🔍 自动查找并导入"
+                android:textSize="16sp"
+                app:backgroundTint="@color/taiji_text_secondary"
+                app:strokeColor="@color/taiji_text_primary"
+                app:strokeWidth="1dp" />
+
             <!-- 状态文本 -->
             <TextView
                 android:id="@+id/tvTransferStatus"

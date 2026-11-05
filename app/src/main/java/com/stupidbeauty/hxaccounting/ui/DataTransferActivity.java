@@ -53,7 +53,7 @@ public class DataTransferActivity extends AppCompatActivity {
 
         findViewById(R.id.btnExportAll).setOnClickListener(v -> startExport());
         findViewById(R.id.btnImportData).setOnClickListener(v -> startImportPicker());
-        findViewById(R.id.btnBack).setOnClickListener(v -> finish());
+        findViewById(R.id.btnAutoImport).setOnClickListener(v -> autoFindAndImport());
 
         FileLogger.i(TAG, "DataTransferActivity 初始化完成");
     }
@@ -145,28 +145,32 @@ public class DataTransferActivity extends AppCompatActivity {
     /**
      * 打开系统文件选择器（零权限，不需要存储权限）
      *
-     * <p>三级降级（应对定制 ROM 没有预装文件管理器的情况）：
+     * <p>三级降级（应对定制 ROM 文件管理器的怪脾气）：
      * <ol>
-     *   <li>ACTION_OPEN_DOCUMENT + 精确 MIME 类型</li>
-     *   <li>ACTION_GET_CONTENT + 通配 *&#47;*</li>
-     *   <li>ACTION_OPEN_DOCUMENT + 通配 *&#47;*</li>
+     *   <li>ACTION_OPEN_DOCUMENT + 通配（显示所有文件，主人自己找 JSON）<\/li>
+     *   <li>ACTION_GET_CONTENT + EXTRA_MIME_TYPES（含 *&#47;*）<\/li>
+     *   <li>ACTION_GET_CONTENT + 通配<\/li>
      * </ol>
-     * <p>全部失败 → 引导用户把文件放到 Download 目录，并自动扫描导入。
+     * <p><b>不先试 application/json</b>：部分 ROM 的文件管理器不认识这个 MIME 类型，</p>
+     * <p>会 fallback 成「图片浏览器」，把 JSON 文件全部过滤掉（主人实测反馈）。</p>
+     * <p>全部失败 → 引导用户把文件放到 Download 目录，并自动扫描导入。</p>
      */
     private void startImportPicker() {
-        // 方案 1：ACTION_OPEN_DOCUMENT + 精确 MIME 类型
-        if (tryOpenPicker(Intent.ACTION_OPEN_DOCUMENT,
-                new String[]{"application/json", "text/plain", "text/json"})) {
-            return;
-        }
-
-        // 方案 2：ACTION_GET_CONTENT + 通配类型
-        if (tryOpenPicker(Intent.ACTION_GET_CONTENT, null)) {
-            return;
-        }
-
-        // 方案 3：ACTION_OPEN_DOCUMENT + 通配类型
+        // 方案 1：ACTION_OPEN_DOCUMENT + 通配类型（不限制类型，显示所有文件）
+        // 注：不用 application/json 开头 —— 部分 ROM 的文件管理器不认识这个 MIME 类型，
+        // 会 fallback 成「图片浏览器」，把 JSON 文件全过滤掉（主人实测反馈）。
         if (tryOpenPicker(Intent.ACTION_OPEN_DOCUMENT, null)) {
+            return;
+        }
+
+        // 方案 2：ACTION_GET_CONTENT + EXTRA_MIME_TYPES（含通配）
+        if (tryOpenPicker(Intent.ACTION_GET_CONTENT,
+                new String[]{"*/*", "application/json", "text/plain", "text/json"})) {
+            return;
+        }
+
+        // 方案 3：ACTION_GET_CONTENT + 通配类型
+        if (tryOpenPicker(Intent.ACTION_GET_CONTENT, null)) {
             return;
         }
 
@@ -264,7 +268,7 @@ public class DataTransferActivity extends AppCompatActivity {
     }
 
     /**
-    /**
+     * 自动在 Download 目录查找导出的 JSON 文件并导入
      * 自动在 Download 目录查找导出的 JSON 文件并导入
      *
      * <p>用于设备没有可用文件管理器的场景（部分定制 ROM）。

@@ -1,12 +1,17 @@
 package com.stupidbeauty.hxaccounting.ui;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.stupidbeauty.hxaccounting.R;
 import com.stupidbeauty.hxaccounting.data.transfer.FullDataExporter;
@@ -36,8 +41,11 @@ public class DataTransferActivity extends AppCompatActivity {
 
     private static final String TAG = "DataTransferActivity";
 
-    /** 请求码：系统文件选择器 */
+    // 请求码：系统文件选择器
     private static final int REQUEST_IMPORT_FILE = 1001;
+
+    // 请求码：存储权限（Android 9 及以下需要）
+    private static final int REQUEST_STORAGE_PERMISSION = 1002;
 
     private ExecutorService transferExecutor;
     private TextView tvStatus;
@@ -143,22 +151,36 @@ public class DataTransferActivity extends AppCompatActivity {
     // ====================================================================
 
     /**
-     * 打开系统文件选择器（零权限，不需要存储权限）
+     * 打开导入入口
      *
-     * <p>三级降级（应对定制 ROM 文件管理器的怪脾气）：
-     * <ol>
-     *   <li>ACTION_OPEN_DOCUMENT + 通配（显示所有文件，主人自己找 JSON）<\/li>
-     *   <li>ACTION_GET_CONTENT + EXTRA_MIME_TYPES（含 *&#47;*）<\/li>
-     *   <li>ACTION_GET_CONTENT + 通配<\/li>
-     * </ol>
-     * <p><b>不先试 application/json</b>：部分 ROM 的文件管理器不认识这个 MIME 类型，</p>
-     * <p>会 fallback 成「图片浏览器」，把 JSON 文件全部过滤掉（主人实测反馈）。</p>
-     * <p>全部失败 → 引导用户把文件放到 Download 目录，并自动扫描导入。</p>
+     * <p><b>为什么用自建文件列表</b>：主人实测（Android 9，定制 ROM）发现
+     * <p>系统文件选择器（ACTION_OPEN_DOCUMENT / ACTION_GET_CONTENT）无论怎么设 MIME，
+     * <p>都只会打开「图片浏览器」，看不到 JSON 文件 —— 那台 ROM 的 DocumentsUI 写死了只处理图片。
+     * <p>所以：先试系统选择器，同时提供一个自建的「浏览 Download 目录」入口作为可靠兼底。
      */
     private void startImportPicker() {
+        new AlertDialog.Builder(this)
+                .setTitle("导入数据")
+                .setItems(new String[]{"📂 浏览 Download 目录（推荐）", "🔧 使用系统文件选择器"},
+                        (dialog, which) -> {
+                            if (which == 0) {
+                                showBuiltInFilePicker();
+                            } else {
+                                openSystemPicker();
+                            }
+                        })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /**
+     * 系统文件选择器（三级降级）
+     *
+     * <p>注意：部分定制 ROM 无论传什么 MIME 都只开图片界面（主人实测）。
+     * <p>所以推荐用自建列表 {@link #showBuiltInFilePicker()}。
+     */
+    private void openSystemPicker() {
         // 方案 1：ACTION_OPEN_DOCUMENT + 通配类型（不限制类型，显示所有文件）
-        // 注：不用 application/json 开头 —— 部分 ROM 的文件管理器不认识这个 MIME 类型，
-        // 会 fallback 成「图片浏览器」，把 JSON 文件全过滤掉（主人实测反馈）。
         if (tryOpenPicker(Intent.ACTION_OPEN_DOCUMENT, null)) {
             return;
         }
@@ -174,9 +196,82 @@ public class DataTransferActivity extends AppCompatActivity {
             return;
         }
 
-        // 全部失败：该设备没有可用的文件管理器 → 引导手动放文件 + 自动扫描
-        FileLogger.e(TAG, "无可用文件管理器，改为自动扫描 Download 目录");
-        showNoFileManagerHint();
+        // 全部失败：改用自建文件列表
+        FileLogger.e(TAG, "无可用文件管理器，改为自建文件列表");
+        showBuiltInFilePicker();
+    }
+
+    /**
+     * 自建文件选择器：列出 Download 目录下的 JSON 文件
+     *
+     * <p>不依赖系统文件管理器，兼容任何 ROM。
+     */
+    private void showBuiltInFilePicker() {
+        // Android 9 及以下需要存储权限
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P && !hasStoragePermission()) {
+            FileLogger.i(TAG, "缺少存储权限，先申请");
+            ActivityCompat.requestPermissions(this,
+                    new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                            android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    REQUEST_STORAGE_PERMISSION);
+            return;
+        }
+
+        java.util.List<java.io.File> files = listJsonFiles();
+        if (files.isEmpty()) {
+            showError("未找到 JSON 文件",
+                    "Download 目录下没找到 .json 文件。\n\n"
+                            + "请把导出的 JSON 文件放到：\n"
+                            + "Download/太极记账导出/\n\n"
+                            + "或者直接放到 Download 根目录也可以。");
+            return;
+        }
+
+        String[] names = new String[files.size()];
+        for (int i = 0; i < files.size(); i++) {
+            names[i] = files.get(i).getName();
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("选要导入的数据文件")
+                .setItems(names, (dialog, which) -> {
+                    java.io.File picked = files.get(which);
+                    FileLogger.i(TAG, "自建选择器选中：" + picked.getAbsolutePath());
+                    doImport(Uri.fromFile(picked));
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /**
+     * 列出 Download 目录（含导出子目录）下的所有 JSON 文件，按修改时间倒序
+     */
+    private java.util.List<java.io.File> listJsonFiles() {
+        java.util.List<java.io.File> candidates = new java.util.ArrayList<>();
+
+        java.io.File external = Environment.getExternalStorageDirectory();
+        if (external == null) {
+            return candidates;
+        }
+
+        java.io.File downloadDir = new java.io.File(external, "Download");
+        if (downloadDir.isDirectory()) {
+            collectJsonFiles(downloadDir, candidates);
+        }
+
+        java.io.File exportDir = new java.io.File(downloadDir, "太极记账导出");
+        if (exportDir.isDirectory()) {
+            collectJsonFiles(exportDir, candidates);
+        }
+
+        java.io.File rootExportDir = new java.io.File(external, "太极记账导出");
+        if (rootExportDir.isDirectory()) {
+            collectJsonFiles(rootExportDir, candidates);
+        }
+
+        java.util.Collections.sort(candidates, (a, b) ->
+                Long.compare(b.lastModified(), a.lastModified()));
+        return candidates;
     }
 
     /**
@@ -255,7 +350,6 @@ public class DataTransferActivity extends AppCompatActivity {
                     progressDialog.dismiss();
                     showImportSuccess(result);
                 });
-
             } catch (Exception e) {
                 FileLogger.e(TAG, "导入失败: " + (e.getMessage() != null ? e.getMessage() : "未知错误"));
                 final String errorMsg = e.getMessage() != null ? e.getMessage() : "未知错误";
@@ -267,14 +361,54 @@ public class DataTransferActivity extends AppCompatActivity {
         });
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_STORAGE_PERMISSION) {
+            return;
+        }
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            FileLogger.i(TAG, "存储权限已授予，继续扫描");
+            doAutoScan();
+        } else {
+            FileLogger.e(TAG, "存储权限被拒绝，无法扫描外置存储");
+            showError("需要存储权限",
+                    "Android 9 及以下需要存储权限才能读取 Download 目录。\n\n"
+                            + "请到「设置 → 应用 → 权限 → 存储」中允许后重试。");
+        }
+    }
+
     /**
-     * 自动在 Download 目录查找导出的 JSON 文件并导入
      * 自动在 Download 目录查找导出的 JSON 文件并导入
      *
      * <p>用于设备没有可用文件管理器的场景（部分定制 ROM）。
-     * <p>查找范围：Download 根目录 + Download/太极记账导出/ 子目录。
+     * <p>Android 9 及以下需要 READ/WRITE_EXTERNAL_STORAGE 权限，否则读不到外置存储。
      */
     private void autoFindAndImport() {
+        // Android 9 及以下：先申请存储权限，否则 listFiles() 返回 null
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P && !hasStoragePermission()) {
+            FileLogger.i(TAG, "缺少存储权限，先申请再扫描");
+            ActivityCompat.requestPermissions(this,
+                    new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                            android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    REQUEST_STORAGE_PERMISSION);
+            return;
+        }
+        doAutoScan();
+    }
+
+    /**
+     * 是否已有存储权限（Android 9 及以下）
+     */
+    private boolean hasStoragePermission() {
+        return ContextCompat.checkSelfPermission(this,
+                android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * 实际执行扫描
+     */
+    private void doAutoScan() {
         transferExecutor.execute(() -> {
             try {
                 java.io.File found = findExportFile();
@@ -283,7 +417,7 @@ public class DataTransferActivity extends AppCompatActivity {
                             "没在 Download 目录找到导出的 JSON 文件。\n\n"
                                     + "请确认文件已放到：\n"
                                     + "Download/太极记账导出/\n\n"
-                                    + "然后再点一次「导入数据」。"));
+                                    + "然后再点一次「自动查找并导入」。"));
                     return;
                 }
 
@@ -297,7 +431,6 @@ public class DataTransferActivity extends AppCompatActivity {
             }
         });
     }
-
     /**
      * 在 Download 目录中查找导出的 JSON 数据文件（按修改时间倒序取最新）
      */
@@ -309,12 +442,22 @@ public class DataTransferActivity extends AppCompatActivity {
             return null;
         }
 
-        // Download 根目录
-        collectJsonFiles(external, candidates);
-        // Download/太极记账导出/
-        java.io.File exportDir = new java.io.File(external, "太极记账导出");
+        // Download 根目录（public/Download，Android 9+ 标准位置）
+        java.io.File downloadDir = new java.io.File(external, "Download");
+        if (downloadDir.isDirectory()) {
+            collectJsonFiles(downloadDir, candidates);
+        }
+
+        // Download/太极记账导出/ 导出子目录
+        java.io.File exportDir = new java.io.File(downloadDir, "太极记账导出");
         if (exportDir.isDirectory()) {
             collectJsonFiles(exportDir, candidates);
+        }
+
+        // 兼容：部分 ROM 把导出目录直接放在 /sdcard/ 根下
+        java.io.File rootExportDir = new java.io.File(external, "太极记账导出");
+        if (rootExportDir.isDirectory()) {
+            collectJsonFiles(rootExportDir, candidates);
         }
 
         if (candidates.isEmpty()) {

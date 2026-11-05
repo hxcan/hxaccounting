@@ -8,6 +8,15 @@
          见 #861808091040 后续优化移除 -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- #937493315851：读写外置存储（仅 Android 9 及以下需要）
+         Android 10+ 用 MediaStore/SAF，无需此权限 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+
     <application
         android:name=".HxAccountingApplication"
         android:allowBackup="true"
